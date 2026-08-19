@@ -41,3 +41,6 @@ Thumbs.db
 *.log
 logs/
 tmp/
+
+# maven-shade-plugin 生成物
+dependency-reduced-pom.xml
