@@ -17,6 +17,9 @@ import java.util.stream.Collectors;
  * <p>断言刻意<b>同时包含 UI 与 DB 两侧</b>，且 DB 断言比对具体值而非行数——
  * 只比 {@code COUNT(*)} 查不出字符集损坏这类问题（CLAUDE.md 3.6）。
  *
+ * <p><b>data-testid 的命名规则统一由 {@link VueGenerator} 提供</b>，本类不另写一套——
+ * 两处各写一套的后果是用例找不到元素，而现象看起来像"页面坏了"，排查方向会一开始就走偏。
+ *
  * <p><b>实现注意</b>：本类不使用 Java 文本块拼装 YAML。文本块会剥离公共缩进，
  * 而 YAML 对缩进敏感，二者叠加极易产出结构错乱、却又"看起来没问题"的文件。
  * 这里用显式字符串拼接，缩进由代码直接控制。
@@ -44,7 +47,7 @@ public final class TestSpecGenerator {
 
         String fillSteps = formFields.stream()
                 .map(f -> "  - action: fill" + NL
-                        + "    selector: '[data-testid=\"" + m + "-" + kebab(f.name()) + "-input\"]'" + NL
+                        + "    selector: '[data-testid=\"" + VueGenerator.fieldTestId(s, f) + "\"]'" + NL
                         + "    value: " + displayValue(f))
                 .collect(Collectors.joining(NL));
 
@@ -151,15 +154,4 @@ public final class TestSpecGenerator {
         return "'" + raw.replace("'", "''") + "'";
     }
 
-    private static String kebab(String camel) {
-        StringBuilder sb = new StringBuilder();
-        for (char c : camel.toCharArray()) {
-            if (Character.isUpperCase(c)) {
-                sb.append('-').append(Character.toLowerCase(c));
-            } else {
-                sb.append(c);
-            }
-        }
-        return sb.toString();
-    }
 }

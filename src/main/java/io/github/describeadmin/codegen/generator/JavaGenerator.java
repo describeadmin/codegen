@@ -1,9 +1,11 @@
 package io.github.describeadmin.codegen.generator;
 
 import io.github.describeadmin.codegen.model.FieldSpec;
+import io.github.describeadmin.codegen.model.FieldType;
 import io.github.describeadmin.codegen.model.ModuleSpec;
 
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -130,22 +132,42 @@ public final class JavaGenerator {
     }
 
     public static String controller(ModuleSpec s) {
-        String queryDoc = s.queryFields().isEmpty()
+        List<FieldSpec> queryFields = s.queryFields();
+
+        String queryDoc = queryFields.isEmpty()
                 ? ""
-                : s.queryFields().stream()
+                : queryFields.stream()
                 .map(f -> " *   <li>{@code " + f.name() + "} —— " + f.comment()
                         + "（" + f.query().name().toLowerCase() + "）</li>")
                 .collect(Collectors.joining("\n", "\n *\n * <p>列表查询支持的条件：\n * <ul>\n", "\n * </ul>"));
 
+        // 统一收集后排序，而不是拼几段固定文本：查询参数的类型（LocalDate、BigDecimal）
+        // 也需要 import，漏掉就是编译不过——这一条实测踩过
+        Set<String> imports = new java.util.TreeSet<>(List.of(
+                "io.github.describeadmin.mybatis.api.BaseController",
+                s.packageOf("entity") + "." + s.entityClass(),
+                s.packageOf("mapper") + "." + s.mapperClass(),
+                s.packageOf("service") + "." + s.serviceClass(),
+                "org.springframework.web.bind.annotation.RequestMapping",
+                "org.springframework.web.bind.annotation.RestController"));
+        if (!queryFields.isEmpty()) {
+            imports.addAll(List.of(
+                    "com.baomidou.mybatisplus.core.conditions.Wrapper",
+                    "com.baomidou.mybatisplus.core.conditions.query.QueryWrapper",
+                    "io.github.describeadmin.common.api.BizException",
+                    "io.github.describeadmin.common.api.ResultCode",
+                    "java.util.Map"));
+            for (FieldSpec f : queryFields) {
+                if (f.type().importName() != null) {
+                    imports.add(f.type().importName());
+                }
+            }
+        }
+
         return """
                 package %s;
 
-                import io.github.describeadmin.mybatis.api.BaseController;
-                import %s.%s;
-                import %s.%s;
-                import %s.%s;
-                import org.springframework.web.bind.annotation.RequestMapping;
-                import org.springframework.web.bind.annotation.RestController;
+                %s
 
                 /**
                  * %s。
@@ -168,18 +190,122 @@ public final class JavaGenerator {
                     protected %s getService() {
                         return %s;
                     }
-                }
+                %s}
                 """.formatted(
                 s.packageOf("controller"),
-                s.packageOf("entity"), s.entityClass(),
-                s.packageOf("mapper"), s.mapperClass(),
-                s.packageOf("service"), s.serviceClass(),
+                imports.stream().map(i -> "import " + i + ";").collect(Collectors.joining("\n")),
                 s.comment(), queryDoc,
                 s.apiPrefix(),
                 s.controllerClass(), s.serviceClass(), s.mapperClass(), s.entityClass(),
                 s.serviceClass(), s.entityVar() + "Service",
                 s.controllerClass(), s.serviceClass(), s.entityVar() + "Service",
                 s.entityVar() + "Service", s.entityVar() + "Service",
-                s.serviceClass(), s.entityVar() + "Service");
+                s.serviceClass(), s.entityVar() + "Service",
+                queryFields.isEmpty() ? "" : listMethod(s, queryFields));
+    }
+
+    /**
+     * 覆写 list，把查询条件真正落到 SQL 上。
+     *
+     * <p><b>为什么必须生成这个方法</b>：{@code BaseController.list} 只接 {@code PageQuery}、
+     * 不构造任何 Wrapper。若不覆写，spec 里的 {@code query: like/eq/range} 就只是一段注释，
+     * 前端搜索栏点了没反应——「看起来能用、实际是死的」比没有这个功能更糟。
+     */
+    private static String listMethod(ModuleSpec s, List<FieldSpec> queryFields) {
+        StringBuilder body = new StringBuilder();
+        java.util.Set<String> parsers = new java.util.TreeSet<>();
+
+        for (FieldSpec f : queryFields) {
+            if (f.query() == FieldSpec.QueryMode.RANGE) {
+                body.append(condition(f, f.name() + "Start", "ge", parsers));
+                body.append(condition(f, f.name() + "End", "le", parsers));
+            } else {
+                body.append(condition(f, f.name(),
+                        f.query() == FieldSpec.QueryMode.LIKE ? "likeRight" : "eq", parsers));
+            }
+        }
+
+        return """
+
+                    /**
+                     * 列表查询的筛选条件。
+                     *
+                     * <p>空值不参与筛选，否则「不填任何条件」会退化成 {@code WHERE col = ''}，一条都查不出。
+                     * LIKE 一律右模糊，可走索引；不生成左模糊以免全表扫描。
+                     */
+                    @Override
+                    protected Wrapper<%s> buildListWrapper(Map<String, String> params) {
+                        QueryWrapper<%s> wrapper = new QueryWrapper<>();
+                %s        return wrapper;
+                    }
+
+                    /** 取参数，空串按未填处理 —— 前端清空输入框后通常传的是空串而不是不传。 */
+                    private static String text(Map<String, String> params, String key) {
+                        String value = params.get(key);
+                        return value == null || value.isBlank() ? null : value.trim();
+                    }
+                %s""".formatted(
+                s.entityClass(), s.entityClass(), body, String.join("", parsers));
+    }
+
+    /**
+     * 单个筛选条件。
+     *
+     * <p>非字符串类型要从查询串转换，转换失败必须返回 400 而不是 500——
+     * 「日期填错了」是使用者的输入问题，报服务器内部错误会把排查方向带偏。
+     */
+    private static String condition(FieldSpec f, String var, String op,
+                                    java.util.Set<String> parsers) {
+        String key = "\"" + var + "\"";
+        String expr;
+        if ("String".equals(f.type().javaSimpleType())) {
+            expr = "text(params, " + key + ")";
+        } else {
+            String parser = parserName(f.type());
+            parsers.add(parserFor(f.type()));
+            expr = parser + "(params, " + key + ")";
+        }
+        return "        wrapper." + op + "(" + expr + " != null, \"" + f.column() + "\", "
+                + expr + ");\n";
+    }
+
+    private static String parserName(FieldType type) {
+        return switch (type) {
+            case INT, FLAG -> "asInt";
+            case LONG -> "asLong";
+            case DECIMAL -> "asDecimal";
+            case DATE -> "asDate";
+            case DATETIME -> "asDateTime";
+            case STRING, TEXT -> "text";
+        };
+    }
+
+    /** 生成对应的转换方法；同一类型多次使用只生成一份（用 TreeSet 去重）。 */
+    private static String parserFor(FieldType type) {
+        String name = parserName(type);
+        String javaType = type.javaSimpleType();
+        String parse = switch (type) {
+            case INT, FLAG -> "Integer.valueOf(value)";
+            case LONG -> "Long.valueOf(value)";
+            case DECIMAL -> "new BigDecimal(value)";
+            case DATE -> "LocalDate.parse(value)";
+            case DATETIME -> "LocalDateTime.parse(value.replace(' ', 'T'))";
+            case STRING, TEXT -> "value";
+        };
+        return """
+
+                    private static %s %s(Map<String, String> params, String key) {
+                        String value = text(params, key);
+                        if (value == null) {
+                            return null;
+                        }
+                        try {
+                            return %s;
+                        } catch (RuntimeException e) {
+                            throw new BizException(ResultCode.BAD_REQUEST,
+                                    "参数格式不正确: " + key + "=" + value);
+                        }
+                    }
+                """.formatted(javaType, name, parse);
     }
 }

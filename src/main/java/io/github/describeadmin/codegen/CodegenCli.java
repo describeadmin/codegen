@@ -2,7 +2,9 @@ package io.github.describeadmin.codegen;
 
 import io.github.describeadmin.codegen.generator.DdlGenerator;
 import io.github.describeadmin.codegen.generator.JavaGenerator;
+import io.github.describeadmin.codegen.generator.MenuSqlGenerator;
 import io.github.describeadmin.codegen.generator.TestSpecGenerator;
+import io.github.describeadmin.codegen.generator.VueGenerator;
 import io.github.describeadmin.codegen.model.ModuleSpec;
 import io.github.describeadmin.codegen.parser.SpecException;
 import io.github.describeadmin.codegen.parser.SpecLoader;
@@ -55,12 +57,14 @@ public final class CodegenCli {
 
         Path spec = Path.of(args[0]);
         Path outDir = Path.of(".");
+        Path frontendOut = null;
         boolean force = false;
         boolean dryRun = false;
 
         for (int i = 1; i < args.length; i++) {
             switch (args[i]) {
                 case "--out" -> outDir = Path.of(args[++i]);
+                case "--frontend-out" -> frontendOut = Path.of(args[++i]);
                 case "--force" -> force = true;
                 case "--dry-run" -> dryRun = true;
                 default -> {
@@ -71,13 +75,19 @@ public final class CodegenCli {
             }
         }
 
+        // 后端与前端通常是两个仓库，默认放到 <out>/frontend 下由人搬运；
+        // 直接指向前端应用根目录时用 --frontend-out
+        if (frontendOut == null) {
+            frontendOut = outDir.resolve("frontend");
+        }
+
         if (!Files.exists(spec)) {
             out.println("✗ Spec 文件不存在: " + spec.toAbsolutePath());
             return 1;
         }
 
         ModuleSpec s = SpecLoader.load(spec);
-        Map<Path, String> files = plan(s, outDir);
+        Map<Path, String> files = plan(s, outDir, frontendOut);
 
         out.println("模块: " + s.comment() + " (" + s.module() + ")");
         out.println("表名: " + s.table() + "    字段: " + s.fields().size()
@@ -90,7 +100,7 @@ public final class CodegenCli {
         for (Map.Entry<Path, String> e : files.entrySet()) {
             Path target = e.getKey();
             boolean exists = Files.exists(target);
-            String rel = outDir.relativize(target).toString().replace('\\', '/');
+            String rel = display(outDir, target);
 
             if (exists && !force) {
                 out.println("  跳过  " + rel + "   (已存在，用 --force 覆盖)");
@@ -119,9 +129,11 @@ public final class CodegenCli {
     }
 
     /** 计算待生成的文件清单。抽出来便于测试与 --dry-run 复用。 */
-    static Map<Path, String> plan(ModuleSpec s, Path outDir) {
+    static Map<Path, String> plan(ModuleSpec s, Path outDir, Path frontendOut) {
         Path javaRoot = outDir.resolve("src/main/java");
         Map<Path, String> files = new LinkedHashMap<>();
+
+        // ---- 后端 ----
         files.put(javaRoot.resolve(pkgPath(s.packageOf("entity"))).resolve(s.entityClass() + ".java"),
                 JavaGenerator.entity(s));
         files.put(javaRoot.resolve(pkgPath(s.packageOf("mapper"))).resolve(s.mapperClass() + ".java"),
@@ -132,9 +144,34 @@ public final class CodegenCli {
                 JavaGenerator.controller(s));
         files.put(outDir.resolve("src/main/resources/db").resolve("schema-" + s.table() + ".sql"),
                 DdlGenerator.generate(s));
+
+        // ---- 菜单：没有它，生成的页面在系统里不可达（见 MenuSqlGenerator 的说明） ----
+        files.put(outDir.resolve("src/main/resources/db").resolve("menu-" + s.table() + ".sql"),
+                MenuSqlGenerator.generate(s));
+
+        // ---- 前端 ----
+        files.put(frontendOut.resolve("src/api").resolve(s.module() + ".ts"),
+                VueGenerator.api(s));
+        files.put(frontendOut.resolve("src/views").resolve(s.module()).resolve("index.vue"),
+                VueGenerator.page(s));
+
+        // ---- 验收用例 ----
         files.put(outDir.resolve("test-specs").resolve(s.module() + ".yaml"),
                 TestSpecGenerator.generate(s));
         return files;
+    }
+
+    /** 展示用的相对路径；目标在 outDir 之外时（--frontend-out 指向别的仓库）退回绝对路径。 */
+    private static String display(Path outDir, Path target) {
+        try {
+            Path rel = outDir.toAbsolutePath().normalize()
+                    .relativize(target.toAbsolutePath().normalize());
+            String text = rel.toString().replace('\\', '/');
+            return text.startsWith("../") ? target.toString().replace('\\', '/') : text;
+        } catch (IllegalArgumentException e) {
+            // Windows 上跨盘符无法 relativize
+            return target.toString().replace('\\', '/');
+        }
     }
 
     private static String pkgPath(String pkg) {
@@ -149,18 +186,29 @@ public final class CodegenCli {
                   codegen <spec.yaml> [选项]
 
                 选项:
-                  --out DIR    输出根目录（默认当前目录）
-                  --force      覆盖已存在的文件（默认跳过）
-                  --dry-run    只打印将要生成的文件，不写盘
-                  -h, --help   显示本帮助
+                  --out DIR           后端输出根目录（默认当前目录）
+                  --frontend-out DIR  前端输出根目录（默认 <out>/frontend）
+                  --force             覆盖已存在的文件（默认跳过）
+                  --dry-run           只打印将要生成的文件，不写盘
+                  -h, --help          显示本帮助
 
-                产出:
+                产出（后端）:
                   src/main/java/<pkg>/<module>/entity/<Entity>Entity.java
                   src/main/java/<pkg>/<module>/mapper/<Entity>Mapper.java
                   src/main/java/<pkg>/<module>/service/<Entity>Service.java
                   src/main/java/<pkg>/<module>/controller/<Entity>Controller.java
                   src/main/resources/db/schema-<table>.sql
+                  src/main/resources/db/menu-<table>.sql    菜单与按钮权限点
+
+                产出（前端）:
+                  src/api/<module>.ts
+                  src/views/<module>/index.vue
+
+                产出（验收）:
                   test-specs/<module>.yaml          结构化端到端验收用例
+
+                注意: 前端 accessMode = backend，路由由 sys_menu 下发。
+                      menu-<table>.sql 必须执行，否则页面在系统里不可达。
 
                 Spec 示例见 examples/ 目录；字段类型与校验规则见 README.md。""");
     }
