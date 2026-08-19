@@ -1,0 +1,61 @@
+# codegen 仓库 CI
+#
+# 本仓库不依赖 framework 的任何模块（生成器只产出源码文本），因此可以独立构建测试。
+# 「生成的代码能否在真实框架下编译」由 sample-app 仓库的 CI 覆盖。
+
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: 构建与测试
+        run: mvn -B clean verify
+
+      - name: 冒烟：示例 spec 能生成全部产物
+        run: |
+          set -e
+          java -jar target/codegen.jar examples/project.yaml --out /tmp/gen
+          for f in \
+            /tmp/gen/src/main/java/com/example/demo/project/entity/ProjectEntity.java \
+            /tmp/gen/src/main/java/com/example/demo/project/controller/ProjectController.java \
+            /tmp/gen/src/main/resources/db/schema-biz_project.sql \
+            /tmp/gen/test-specs/project.yaml ; do
+            [ -f "$f" ] || { echo "::error::缺少产物 $f"; exit 1; }
+          done
+          echo "  ✓ 全部产物已生成"
+
+      - name: 冒烟：生成的 DDL 能在 MySQL 5.7 上执行
+        run: |
+          set -e
+          docker run -d --name cg57 -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=cg \
+            mysql:5.7 --character-set-server=utf8mb4 --collation-server=utf8mb4_general_ci
+          for i in $(seq 1 60); do
+            docker exec cg57 mysqladmin ping -uroot -proot --silent >/dev/null 2>&1 && break
+            sleep 2
+          done
+          docker cp /tmp/gen/src/main/resources/db/schema-biz_project.sql cg57:/tmp/s.sql
+          docker exec cg57 sh -c 'mysql -uroot -proot --default-character-set=utf8mb4 cg < /tmp/s.sql'
+          # 值断言而非计数：字符集损坏时计数依然正确（CLAUDE.md 3.6）
+          got=$(docker exec cg57 mysql -uroot -proot --default-character-set=utf8mb4 -N -B cg -e \
+            "SELECT column_comment FROM information_schema.columns \
+             WHERE table_schema='cg' AND table_name='biz_project' AND column_name='project_name';")
+          [ "$got" = "项目名称" ] || { echo "::error::中文注释损坏: $got"; exit 1; }
+          echo "  ✓ DDL 在 MySQL 5.7 上执行成功，中文注释完好"
+
+      - name: 清理
+        if: always()
+        run: docker rm -f cg57 || true

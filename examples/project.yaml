@@ -1,0 +1,59 @@
+# 代码生成器输入示例：项目管理模块
+#
+# 说明：
+#   - 审计字段（创建人/创建时间、更新人/更新时间、逻辑删除、乐观锁版本）与主键
+#     由 BaseEntity 提供，【不要】在 fields 里声明，声明了会被校验拦下
+#   - 类型集合刻意受限，把 SQL 红线固化在类型系统里：
+#     没有 timestamp（用 datetime）、没有 boolean（用 flag）、没有 json（用 text）
+#   - 表名不能用 sys_ 前缀，那是 framework-system-starter 的系统管理表
+
+basePackage: com.example.demo
+module: project
+entity: Project
+table: biz_project
+comment: 项目
+# apiPrefix 可省略，默认为 /api/<module>
+apiPrefix: /api/project
+
+fields:
+  - name: projectName
+    type: string
+    length: 128
+    nullable: false
+    comment: 项目名称
+    query: like          # 右模糊，可走索引
+    indexed: true
+
+  - name: projectCode
+    type: string
+    length: 64
+    comment: 项目编号
+    query: eq
+    indexed: true
+
+  - name: ownerDeptId
+    type: long
+    comment: 归口部门ID
+    query: eq
+    indexed: true
+
+  - name: budget
+    type: decimal
+    precision: 18
+    scale: 2
+    comment: 预算金额
+
+  - name: startDate
+    type: date
+    comment: 开始日期
+    query: range         # 生成 startDateStart / startDateEnd 两个查询参数
+
+  - name: status
+    type: flag
+    nullable: false
+    comment: 状态
+    query: eq
+
+  - name: remark
+    type: text
+    comment: 备注
