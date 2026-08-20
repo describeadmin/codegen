@@ -194,6 +194,7 @@ public final class VueGenerator {
 
                 import { onMounted, reactive, ref } from 'vue';
 
+                import { ConfirmDialog } from '@describeadmin/ele-ui';
                 import { Page } from '@describeadmin/ui';
 
                 %s
@@ -204,7 +205,6 @@ public final class VueGenerator {
                   get%sListApi,
                   update%sApi,
                 } from '#/api/%s';
-                import ConfirmDialog from '#/components/confirm-dialog.vue';
 
                 defineOptions({ name: '%s' });
 
