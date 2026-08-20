@@ -43,10 +43,24 @@ jobs:
           set -e
           docker run -d --name cg57 -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=cg \
             mysql:5.7 --character-set-server=utf8mb4 --collation-server=utf8mb4_general_ci
+          # 就绪探针必须是「真正要做的那件事」。
+          # 原先用的是 `docker exec cg57 mysqladmin ping`（不带 -h，走 unix socket）。
+          # MySQL 5.7 的 entrypoint 初始化期间会先起一个临时服务器，它带
+          # --skip-networking，只监听 socket。于是 socket 上的 ping 立刻成功，
+          # 循环第 2 轮就跳出，紧接着的查询拿到 ERROR 1045 Access denied
+          # —— 容器启动 4 秒即失败，而 5.7 完整初始化要 20~30 秒。
+          #
+          # 注意 docs/docker-compose.test.yml 里的 `mysqladmin ping -h 127.0.0.1`
+          # 并没有这个问题：临时服务器不监听 TCP，探针会如实失败。
+          # 出问题的是「走 socket 的 ping」，不是 ping 本身。
+          ready=
           for i in $(seq 1 60); do
-            docker exec cg57 mysqladmin ping -uroot -proot --silent >/dev/null 2>&1 && break
+            if docker exec cg57 mysql -uroot -proot -N -B cg -e 'SELECT 1' >/dev/null 2>&1; then
+              ready=yes; break
+            fi
             sleep 2
           done
+          [ -n "$ready" ] || { echo "::error::MySQL 5.7 在 120 秒内未就绪"; docker logs cg57 | tail -30; exit 1; }
           docker cp /tmp/gen/src/main/resources/db/schema-biz_project.sql cg57:/tmp/s.sql
           docker exec cg57 sh -c 'mysql -uroot -proot --default-character-set=utf8mb4 cg < /tmp/s.sql'
           # 值断言而非计数：字符集损坏时计数依然正确（CLAUDE.md 3.6）
