@@ -14,7 +14,7 @@
 
   <groupId>io.github.describeadmin</groupId>
   <artifactId>codegen</artifactId>
-  <version>0.1.0</version>
+  <version>0.1.1</version>
 
   <name>describeadmin :: codegen</name>
   <description>以 YAML/DSL 为输入的代码生成器</description>

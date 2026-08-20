@@ -6,6 +6,26 @@
 `codegen` 的版本号与 `framework` 保持一致：它生成的代码要继承框架基类，
 两者的兼容性必须成对理解。
 
+## 0.1.1 (2026-08-20)
+
+**本版本没有任何功能变更。** 它跟随 `framework` 0.1.1 走，只为维持本文件开头那条约定——
+版本号与 `framework` 一致。framework 0.1.1 交付的是业务方脚手架
+`describeadmin-archetype`，与生成器无关。
+
+### Breaking Changes
+
+无。
+
+### New Features
+
+无。
+
+### Bug Fixes
+
+无。
+
+---
+
 ## 0.1.0 (2026-08-20)
 
 首个公开版本。
