@@ -215,6 +215,77 @@ Controller 一律返回 `Result<T>`，不要自行拼装响应结构。
 
 命名格式：`<模块>-<对象>-<动作>`。没有 `data-testid` 的交互元素视为未完成。
 
+### 4.5 权限点
+
+命名固定为 `<模块>:<对象>:<动作>`，动作只有四个：`list` / `add` / `edit` / `remove`。
+`seed-rbac.sql` 的种子数据与 codegen 的 `menu-*.sql` 都按这套产出，不要另立一套。
+
+```java
+// 继承 BaseController 的五个通用端点自动校验，无需写任何注解
+// 前缀由 @RequestMapping 推导：/api/system/user -> system:user
+
+// 自定义端点用 Spring Security 原生注解，不要自造
+@PreAuthorize("hasAuthority('system:user:edit')")
+@PutMapping("/{userId}/password")
+public Result<Void> resetPassword(...) { ... }
+```
+
+三条必须知道的事：
+
+1. **推导与授权数据必须对得上**。`apiPrefix` 自定义过、或模块名含下划线时
+   （默认 `my_module` → `/api/my-module`，推导得 `my-module`，而权限点是 `my_module`），
+   推导结果会与 `menu-*.sql` 登记的权限点错配，**表现为连 ADMIN 都被 403**，
+   且错误信息里没有任何东西指向前缀。codegen 已改为直接生成 `permPrefix()` 覆写；
+   手写的 Controller 需自行覆写。
+2. **新增模块必须同时登记权限点并授权**。只建表不登记 `menu-*.sql`，
+   接口会 403 而侧边栏根本没有入口，两个症状都不指向"忘了授权"。
+3. **权限快照在登录时确定**。改了角色授权不会对已登录会话实时生效，
+   需重新登录或吊销令牌——这是不透明令牌设计的既有取舍。
+
+排查时可用 `describeadmin.security.permission-enabled=false` 临时关闭校验，
+但关闭状态下**任何已登录账号都能调用任何接口**，权限点仍会下发给前端用于按钮显隐，
+于是界面看起来受控、实际不受控。不要用于生产。
+
+
+### 4.6 插件
+
+新增能力前先判断它该进核心还是做插件。满足下面任一条 → **必须做插件**：
+
+- 绑定具体外部系统或厂商（钉钉、浙政钉、OSS）
+- 引入重量级依赖（Redis、POI、springdoc、Quartz、HTTP client）
+- 只有部分项目需要
+- 同一能力有多种互斥实现
+
+核心只保留**契约 + 零依赖的默认实现**（现成范式：`CacheProvider` + `InMemoryCacheProvider`、
+`TokenStore` + `InMemoryTokenStore`）。核心模块的重依赖由 framework 父 POM 的
+`enforce-core-thin` 这条 enforcer 规则在构建期堵死。
+
+**插件一律独立成仓**，不作为 `framework` 仓的 module —— 版本线与发布都不绑定框架。
+插件 POM **不继承 `framework-parent`**，改为 `import framework-bom`：那正是业务方消费框架的
+姿势，插件用同一套姿势才能提前暴露业务方会遇到的问题。代价是构建配置要自带一份
+（toolchains、`release=17`、surefire 编码、enforcer 的 JDBC 与 Jackson 两条），
+但**不带** `enforce-core-thin` —— 插件的职责就是引入那些重依赖。
+
+由此还有两条容易出错的：
+
+- 插件必须声明**适配的最低框架版本**，并在三处保持一致：`registry.md` 的表格、
+  POM 里 import 的 `framework-bom` 版本、代码里的常量 + `FrameworkVersion.requireCompatible()`
+  启动期自检。只有第三处真正生效——插件以 `provided` 依赖框架，
+  **运行时的框架版本由业务方决定**，不是插件构建时那个
+- `framework-bom` **刻意不仲裁插件版本**。插件版本与框架版本无对应关系，
+  写进 BOM 会让业务方拿到一个与框架同号、根本不存在的制品
+
+写插件的完整规范见 **`docs/registry.md`**，新增插件必须同时登记到那里和 `repos.yml`。
+其中最容易出错、且失败最隐蔽的一条摘在这里：
+
+> 核心用 `@ConditionalOnMissingBean` 提供默认实现，该条件**只检查当前已注册的 Bean 定义**。
+> 插件若晚于核心被评估，插件的 Bean 会被自己的条件挡掉——**引了却没生效，启动毫无异常**。
+> 插件必须显式声明 `@AutoConfiguration(before = ...)`；对 `optional` 依赖一律用
+> `beforeName` 的**字符串**形式，写成 `before = Xxx.class` 会在该模块缺席时加载即失败。
+
+插件必须提供运行时开关（`@ConditionalOnProperty`），关掉后行为与"没引这个 jar"完全一致；
+并且必须同时测"不引 = 行为不变"和"引了 = 能力生效"两条路径。
+
 ---
 
 ## 5. 兼容性与发布
@@ -249,6 +320,8 @@ mvn -f framework/pom.xml clean verify -Prelease -Dgpg.skip=true
 
 ## 7. 给 AI Agent 的额外提示
 
+- **开工前先读 `docs/PROGRESS.md`**——它写「现在到哪了、下一步做什么」。
+  多仓拓扑下，"本地已完成但尚未推上 GitHub"是常态，光看远端仓库会得出错误结论
 - **改动前先读 `develop_plan.md` 对应章节**，本文件只写结论不写理由，理由在方案里
 - 遇到版本问题查 `VERSION_BASELINE.md`，里面记录了已核验的事实和已知的错误信息源
 - 本项目多处决策是**有意选择上一代技术**（Spring Boot 3.5 而非 4.x、Jackson 2 而非 3），

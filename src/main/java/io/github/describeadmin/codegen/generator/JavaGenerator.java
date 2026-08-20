@@ -190,6 +190,21 @@ public final class JavaGenerator {
                     protected %s getService() {
                         return %s;
                     }
+
+                    /**
+                     * 权限点前缀。
+                     *
+                     * <p>显式覆写，不依赖 {@code BaseController} 从 {@code @RequestMapping} 的推导：
+                     * apiPrefix 默认会把模块名里的下划线换成连字符（{@code my_module} →
+                     * {@code /api/my-module}），而 {@code menu-*.sql} 登记的权限点用的是模块名原样
+                     * （{@code my_module:list}）。靠推导会得到 {@code my-module:list}，
+                     * 与授权数据对不上，表现为<b>连 ADMIN 都被 403</b>——
+                     * 而错误信息里没有任何东西指向"权限点前缀拼错了"。
+                     */
+                    @Override
+                    protected String permPrefix() {
+                        return "%s";
+                    }
                 %s}
                 """.formatted(
                 s.packageOf("controller"),
@@ -201,6 +216,7 @@ public final class JavaGenerator {
                 s.controllerClass(), s.serviceClass(), s.entityVar() + "Service",
                 s.entityVar() + "Service", s.entityVar() + "Service",
                 s.serviceClass(), s.entityVar() + "Service",
+                s.module(),
                 queryFields.isEmpty() ? "" : listMethod(s, queryFields));
     }
 
