@@ -1,0 +1,98 @@
+# codegen 发布：GitHub Release 附带可执行 fat jar
+#
+# 【为什么不发到 Maven Central】
+# develop_plan.md 9.4 定了一条硬规定：codegen 绝不出现在业务方 pom.xml 的
+# <dependencies> 中——它是命令行工具，不是库，运行时不需要任何框架类。
+# 既然没有"依赖它"的消费者，发到 Central 就没有意义。
+# Central 只对未来的 describeadmin-codegen-maven-plugin 形态有价值（9.4.1 的"主"形态）。
+#
+# 与 Central 不同，GitHub Release 可以删除重发，因此这条链路是可逆的。
+#
+# 触发：打 tag v* 自动发布；或手动触发（默认 dry-run，只构建校验不建 Release）。
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: '只构建与校验，不创建 GitHub Release'
+        type: boolean
+        default: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: maven-central
+    permissions:
+      contents: write        # 创建 Release 需要写权限
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: 校验 tag 与 POM 版本一致
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -e
+          tag="${GITHUB_REF#refs/tags/v}"
+          pom=$(mvn -B help:evaluate -Dexpression=project.version -q -DforceStdout)
+          echo "tag=$tag  pom=$pom"
+          if [ "$tag" != "$pom" ]; then
+            echo "::error::tag v$tag 与 POM 版本 $pom 不一致，拒绝发布"; exit 1
+          fi
+          case "$pom" in
+            *-SNAPSHOT) echo "::error::不能用 SNAPSHOT 版本发布"; exit 1 ;;
+          esac
+
+      - name: 构建与测试
+        run: mvn -B clean verify
+
+      - name: 校验 fat jar 真的可执行
+        # 只检查文件存在是不够的：shade 配置写错时 jar 照样产出，
+        # 但缺 Main-Class 或缺依赖，用户下载下来第一条命令就失败。
+        run: |
+          set -e
+          [ -f target/codegen.jar ] || { echo "::error::target/codegen.jar 未产出"; exit 1; }
+          java -jar target/codegen.jar examples/project.yaml --out /tmp/relcheck
+          for f in \
+            /tmp/relcheck/src/main/java/com/example/demo/project/entity/ProjectEntity.java \
+            /tmp/relcheck/src/main/resources/db/schema-biz_project.sql ; do
+            [ -f "$f" ] || { echo "::error::缺少产物 $f"; exit 1; }
+          done
+          # 值断言而非存在性断言：编码坏掉时文件照样存在（CLAUDE.md 3.6）
+          grep -q '项目名称' /tmp/relcheck/src/main/resources/db/schema-biz_project.sql \
+            || { echo "::error::生成产物中的中文损坏"; exit 1; }
+          echo "  ✓ fat jar 可执行，产物齐备，中文完好"
+
+      - name: 生成校验和
+        run: |
+          cd target && sha256sum codegen.jar > codegen.jar.sha256 && cat codegen.jar.sha256
+
+      - name: 创建 GitHub Release
+        if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          tag="${GITHUB_REF#refs/tags/}"
+          ver="${tag#v}"
+          # 只抽取 CHANGELOG 中本版本那一节，而不是把整个文件塞进 release notes
+          notes=/tmp/notes.md
+          if [ -f CHANGELOG.md ]; then
+            awk -v v="## $ver" 'index($0,v)==1{f=1;next} f&&/^## /{exit} f' CHANGELOG.md > "$notes"
+          fi
+          if [ -s "$notes" ]; then
+            echo "使用 CHANGELOG.md 中 $ver 一节作为 release notes"
+            gh release create "$tag" target/codegen.jar target/codegen.jar.sha256               --title "$tag" --notes-file "$notes"
+          else
+            echo "::warning::CHANGELOG.md 中未找到 $ver 一节，改用自动生成的 notes"
+            gh release create "$tag" target/codegen.jar target/codegen.jar.sha256               --title "$tag" --generate-notes
+          fi

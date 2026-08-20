@@ -2,6 +2,18 @@
 
 以 YAML 为输入的代码生成器，产出**薄**业务代码。
 
+**从零开始用这套框架，请看
+[快速开始](https://github.com/describeadmin/docs/blob/main/QUICKSTART.md)。**
+
+## 获取
+
+从 [Releases](https://github.com/describeadmin/codegen/releases) 下载 `codegen.jar`
+（附带 `.sha256` 校验和）。
+
+`codegen` **不发布到 Maven Central，也绝不应出现在业务方 `pom.xml` 的
+`<dependencies>` 中**——它是开发期命令行工具，产物一旦生成即脱离生成器，
+业务方运行时完全不需要它。
+
 ## 为什么以 YAML 为输入，而不读数据库元数据
 
 这是方案 3.3.1 的一处优先级调整，原因有两条：
