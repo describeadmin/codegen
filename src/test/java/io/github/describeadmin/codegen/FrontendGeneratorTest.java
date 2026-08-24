@@ -132,10 +132,71 @@ class FrontendGeneratorTest {
     @DisplayName("类型映射正确")
     void apiClient() {
         String api = VueGenerator.api(spec);
-        // decimal / long → number，date → string
+        // decimal → number，date → string
         assertThat(api).contains("budget?: number;").contains("startDate?: string;");
         // range 字段在查询类型里拆成起止两个
         assertThat(api).contains("startDateStart?: string;").contains("startDateEnd?: string;");
+    }
+
+    @Test
+    @DisplayName("long 映射为 string —— 后端把 Long 序列化成字符串防雪花 ID 被 JS 舍入")
+    void longMapsToString() {
+        String api = VueGenerator.api(spec);
+
+        // ownerDeptId 在 examples/project.yaml 里声明为 long
+        assertThat(api).contains("ownerDeptId?: string;");
+        assertThat(api).doesNotContain("ownerDeptId?: number;");
+        // 查询条件同样跟着变，否则搜索栏的 v-model 与接口类型对不上
+        assertThat(api).contains("ownerDeptId?: string;");
+    }
+
+    @Test
+    @DisplayName("审计字段里的 ID 是 string，version 仍是 number")
+    void auditIdsAreStrings() {
+        String api = VueGenerator.api(spec);
+
+        assertThat(api).contains("id?: string;")
+                .contains("createBy?: null | string;")
+                .contains("updateBy?: null | string;");
+        // version 是 Integer，不在 Long → String 的范围内
+        assertThat(api).contains("version?: null | number;");
+    }
+
+    @Test
+    @DisplayName("update/delete 的 id 形参是 string —— 与列表返回的 id 类型一致")
+    void mutationApisTakeStringId() {
+        String api = VueGenerator.api(spec);
+
+        assertThat(api).contains("updateProjectApi(id: string,")
+                .contains("deleteProjectApi(id: string)");
+        assertThat(api).doesNotContain("id: number");
+    }
+
+    @Test
+    @DisplayName("分页元信息仍是 number —— PageResult 用 @JsonFormat 排除了转换")
+    void pageMetadataStaysNumeric() {
+        String api = VueGenerator.api(spec);
+
+        // el-pagination 的 :total 要求数字
+        assertThat(api).contains("total: number;")
+                .contains("pages: number;")
+                .contains("current: number;")
+                .contains("size: number;");
+    }
+
+    @Test
+    @DisplayName("long 字段用文本框，不用数字微调器 —— v-model 是字符串")
+    void longUsesTextInput() {
+        String page = VueGenerator.page(spec);
+
+        int idx = page.indexOf("data-testid=\"project-owner-dept-id-input\"");
+        assertThat(idx).as("ownerDeptId 的表单项应存在").isGreaterThan(0);
+
+        // 往前找最近的控件标签。注意不能用 lastIndexOf("<ElInput") 判别——
+        // "<ElInputNumber" 正好以它为前缀，那样写等于永远成立。标签后跟换行才是唯一标识。
+        String before = page.substring(Math.max(0, idx - 200), idx);
+        assertThat(before).as("long 字段应渲染成 ElInput").contains("<ElInput\n");
+        assertThat(before).as("long 字段不应再用数字微调器").doesNotContain("<ElInputNumber");
     }
 
     // ------------------------------------------------------------- 菜单 SQL

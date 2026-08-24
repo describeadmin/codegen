@@ -6,6 +6,36 @@
 `codegen` 的版本号与 `framework` 保持一致：它生成的代码要继承框架基类，
 两者的兼容性必须成对理解。
 
+## 未发布（开发中）
+
+> `pom.xml` 里的版本仍是 `0.1.1`，尚未跟随 framework 升到 `0.2.0-SNAPSHOT`
+> ——本文件开头那条"版本号与 framework 保持一致"的约定当前是断开的，发版前需要对齐。
+
+### Breaking Changes
+
+- **`long` 类型字段生成的 TypeScript 类型由 `number` 改为 `string`**，
+  连带审计字段 `id`/`createBy`/`updateBy` 与 `update*Api(id)`/`delete*Api(id)`
+  的形参、`editingId`/`deletingId` 的 ref 类型。
+  框架 0.2.0 起把所有 `Long` 序列化成字符串（避免 19 位雪花 ID 被 JS 舍入），
+  生成的前端必须跟着变，否则类型与实际返回值对不上。
+  `version` 是 `Integer`，不在此列；`%sPage` 的 `total`/`pages`/`current`/`size`
+  也保持 `number`（框架用 `@JsonFormat(shape = NUMBER)` 排除了它们）。
+- **`long` 字段的表单控件由 `ElInputNumber` 改为 `ElInput`**。
+  v-model 现在是字符串，数字微调器接不住；而本框架里的 `long` 基本都是 ID 引用
+  （`ownerDeptId` 这类），微调器本就不是合适的控件。
+  搜索栏与表单初值同步改为空串。
+
+### New Features
+
+- 生成的 Controller 带 `permPrefix()` 显式覆写，消除模块名含下划线时
+  权限点静默错配、连 ADMIN 都被 403 的问题。
+
+### Bug Fixes
+
+无。
+
+---
+
 ## 0.1.1 (2026-08-20)
 
 **本版本没有任何功能变更。** 它跟随 `framework` 0.1.1 走，只为维持本文件开头那条约定——
