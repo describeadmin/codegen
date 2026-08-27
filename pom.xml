@@ -45,7 +45,12 @@
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <java.build.version>21</java.build.version>
+
+    <!--
+      构建 JDK 只要求 17 或更高（enforcer 的 requireJavaVersion 兜底），用哪个由构建者自己定。
+      不用 maven-toolchains-plugin 钉死具体版本：release=17 已保证产物在 Java 17 上可运行，
+      钉一个具体版本只会让没配 ~/.m2/toolchains.xml 的人构建失败（VERSION_BASELINE 第八轮）。
+    -->
     <maven.compiler.release>17</maven.compiler.release>
 
     <snakeyaml.version>2.4</snakeyaml.version>
@@ -54,7 +59,7 @@
 
     <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
     <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
-    <maven-toolchains-plugin.version>3.3.0</maven-toolchains-plugin.version>
+    <maven-enforcer-plugin.version>3.6.3</maven-enforcer-plugin.version>
     <maven-shade-plugin.version>3.6.1</maven-shade-plugin.version>
   </properties>
 
@@ -83,16 +88,22 @@
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-toolchains-plugin</artifactId>
-        <version>${maven-toolchains-plugin.version}</version>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <version>${maven-enforcer-plugin.version}</version>
         <executions>
           <execution>
-            <goals><goal>select-jdk-toolchain</goal></goals>
+            <id>enforce-rules</id>
+            <goals><goal>enforce</goal></goals>
+            <configuration>
+              <rules>
+                <!-- 唯一的构建前提：JDK >= 17。release=17 约束的是产物，与构建 JDK 无关。 -->
+                <requireJavaVersion>
+                  <version>[17,)</version>
+                </requireJavaVersion>
+              </rules>
+            </configuration>
           </execution>
         </executions>
-        <configuration>
-          <version>${java.build.version}</version>
-        </configuration>
       </plugin>
 
       <plugin>
