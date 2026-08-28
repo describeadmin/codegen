@@ -38,7 +38,9 @@
 
 ### Bug Fixes
 
-无。
+- 生成的 Controller 的 `permPrefix()` 覆写由 `protected` 改为 `public`。
+  `BaseController.permPrefix()` 自框架 0.2.0 起是 `public`（供 `OperLogAspect`
+  跨包读取），用 `protected` 覆写会因收窄可见性而编译不过。
 
 ---
 
