@@ -3,13 +3,13 @@
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)，
 每个版本固定分 **Breaking Changes / New Features / Bug Fixes** 三类。
 
-`codegen` 的版本号与 `framework` 保持一致：它生成的代码要继承框架基类，
-两者的兼容性必须成对理解。
+`codegen` 的版本号与 `framework` 保持一致（`develop_plan.md` §9.4）：它生成的代码要继承
+框架基类，两者的兼容性必须成对理解；`workspace` 仓的 `codegen` skill 也据此「按框架版本
+取同号 jar」，不必试错。
 
 ## 未发布（开发中）
 
-> `pom.xml` 里的版本仍是 `0.1.1`，尚未跟随 framework 升到 `0.2.0-SNAPSHOT`
-> ——本文件开头那条"版本号与 framework 保持一致"的约定当前是断开的，发版前需要对齐。
+> `pom.xml` 已随 framework 升到 `0.2.0-SNAPSHOT`（2026-08-28 对齐）。下方条目发布时定为 `0.2.0`。
 
 ### Breaking Changes
 
