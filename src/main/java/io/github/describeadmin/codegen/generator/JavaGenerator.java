@@ -200,9 +200,13 @@ public final class JavaGenerator {
                      * （{@code my_module:list}）。靠推导会得到 {@code my-module:list}，
                      * 与授权数据对不上，表现为<b>连 ADMIN 都被 403</b>——
                      * 而错误信息里没有任何东西指向"权限点前缀拼错了"。
+                     *
+                     * <p>{@code public} 而非 {@code protected}：{@code BaseController.permPrefix()}
+                     * 自 0.2.0 起是 {@code public}（供 {@code OperLogAspect} 跨包读取），
+                     * 覆写不能收窄可见性。
                      */
                     @Override
-                    protected String permPrefix() {
+                    public String permPrefix() {
                         return "%s";
                     }
                 %s}

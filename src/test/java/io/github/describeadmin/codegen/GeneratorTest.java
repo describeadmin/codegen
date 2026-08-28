@@ -62,6 +62,10 @@ class GeneratorTest {
                 "extends BaseController<ProjectService, ProjectMapper, ProjectEntity>");
         assertThat(src).contains("@RequestMapping(\"/api/project\")");
         assertThat(src).contains("protected ProjectService getService()");
+        // BaseController.permPrefix() 自 0.2.0 起是 public——覆写不能收窄可见性，
+        // 写成 protected 会编译不过（实测在 sample-app 上踩过）
+        assertThat(src).contains("public String permPrefix()");
+        assertThat(src).doesNotContain("protected String permPrefix()");
     }
 
     @Test
