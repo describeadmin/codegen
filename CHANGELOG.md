@@ -103,7 +103,8 @@ Java 文件小得多，且错误在解析阶段就被明确指出，不必等编
 
 ### 已知限制
 
-- **Maven 插件形态（`describeadmin-codegen-maven-plugin`）尚未交付。**
-  设计上它才是主形态——写在 `pom.xml` 里是可被 AI Agent 发现的，
-  而一条需要外部记忆的 `java -jar` 命令不具备这个性质。当前只有 fat jar 形态。
+- ~~**Maven 插件形态（`describeadmin-codegen-maven-plugin`）尚未交付。**~~
+  **2026-08-28 更新：此形态已放弃**，codegen 只做可执行 fat jar。可发现性改由业务方
+  工作空间的 `CLAUDE.md` §6 + `workspace` 仓的 `codegen` skill 承担；jar 的获取/校验/
+  缓存也由该 skill 负责（`develop_plan.md` §9.4.1、§9.4.3）。
 - 生成产物覆盖单表 CRUD；关联表、树形结构等需手工调整。
