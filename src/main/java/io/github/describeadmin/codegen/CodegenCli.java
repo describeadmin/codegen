@@ -5,6 +5,7 @@ import io.github.describeadmin.codegen.generator.JavaGenerator;
 import io.github.describeadmin.codegen.generator.MenuSqlGenerator;
 import io.github.describeadmin.codegen.generator.TestSpecGenerator;
 import io.github.describeadmin.codegen.generator.VueGenerator;
+import io.github.describeadmin.codegen.model.Layout;
 import io.github.describeadmin.codegen.model.ModuleSpec;
 import io.github.describeadmin.codegen.parser.SpecException;
 import io.github.describeadmin.codegen.parser.SpecLoader;
@@ -23,7 +24,7 @@ import java.util.Map;
  * 命令行入口。
  *
  * <pre>
- *   codegen &lt;spec.yaml&gt; [--out DIR] [--force] [--dry-run]
+ *   codegen &lt;spec.yaml&gt; [--out DIR] [--layout nested|flat] [--force] [--dry-run]
  * </pre>
  *
  * <p>设计要点：
@@ -60,11 +61,13 @@ public final class CodegenCli {
         Path frontendOut = null;
         boolean force = false;
         boolean dryRun = false;
+        String layoutOverride = null;
 
         for (int i = 1; i < args.length; i++) {
             switch (args[i]) {
                 case "--out" -> outDir = Path.of(args[++i]);
                 case "--frontend-out" -> frontendOut = Path.of(args[++i]);
+                case "--layout" -> layoutOverride = args[++i];
                 case "--force" -> force = true;
                 case "--dry-run" -> dryRun = true;
                 default -> {
@@ -86,12 +89,16 @@ public final class CodegenCli {
             return 1;
         }
 
-        ModuleSpec s = SpecLoader.load(spec);
+        ModuleSpec s = SpecLoader.load(spec, layoutOverride);
         Map<Path, String> files = plan(s, outDir, frontendOut);
 
         out.println("模块: " + s.comment() + " (" + s.module() + ")");
         out.println("表名: " + s.table() + "    字段: " + s.fields().size()
                 + "    接口前缀: " + s.apiPrefix());
+        // nested 是默认，不打扰；非默认布局明确提示是哪来的，避免 CODEGEN_LAYOUT 隔空生效难排查
+        if (s.layout() != Layout.NESTED) {
+            out.println("布局: " + s.layout().key() + "（来自 " + s.layoutOrigin() + "）");
+        }
         out.println();
 
         List<String> written = new ArrayList<>();
@@ -188,15 +195,14 @@ public final class CodegenCli {
                 选项:
                   --out DIR           后端输出根目录（默认当前目录）
                   --frontend-out DIR  前端输出根目录（默认 <out>/frontend）
+                  --layout nested|flat 后端 Java 包布局（默认 nested；也可用 CODEGEN_LAYOUT 环境变量）
                   --force             覆盖已存在的文件（默认跳过）
                   --dry-run           只打印将要生成的文件，不写盘
                   -h, --help          显示本帮助
 
-                产出（后端）:
-                  src/main/java/<pkg>/<module>/entity/<Entity>Entity.java
-                  src/main/java/<pkg>/<module>/mapper/<Entity>Mapper.java
-                  src/main/java/<pkg>/<module>/service/<Entity>Service.java
-                  src/main/java/<pkg>/<module>/controller/<Entity>Controller.java
+                产出（后端，<layer> = entity/mapper/service/controller）:
+                  src/main/java/<pkg>/<module>/<layer>/...    nested 布局（默认）
+                  src/main/java/<pkg>/<layer>/...             flat 布局（--layout flat）
                   src/main/resources/db/schema-<table>.sql
                   src/main/resources/db/menu-<table>.sql    菜单与按钮权限点
 

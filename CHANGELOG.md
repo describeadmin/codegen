@@ -29,6 +29,12 @@
 
 - 生成的 Controller 带 `permPrefix()` 显式覆写，消除模块名含下划线时
   权限点静默错配、连 ADMIN 都被 403 的问题。
+- **新增 `flat` 包布局**：`--layout flat` 让后端 Java 文件落在
+  `<basePackage>.<layer>` 而非默认的 `<basePackage>.<module>.<layer>`，
+  面向不需要模块层级的小工程。取值优先级：`--layout` 参数 > spec 顶层 `layout:` 键 >
+  `CODEGEN_LAYOUT` 环境变量 > 默认 `nested`；非法取值在任何一层都 fail fast 并点明来源。
+  只影响后端 Java 包与文件落点，前端目录 / `schema-*.sql` / `menu-*.sql` /
+  `test-specs/*.yaml` / 权限点前缀 / `@RequestMapping` 一律不变。
 
 ### Bug Fixes
 

@@ -2,6 +2,7 @@ package io.github.describeadmin.codegen.parser;
 
 import io.github.describeadmin.codegen.model.FieldSpec;
 import io.github.describeadmin.codegen.model.FieldType;
+import io.github.describeadmin.codegen.model.Layout;
 import io.github.describeadmin.codegen.model.ModuleSpec;
 import org.yaml.snakeyaml.Yaml;
 
@@ -44,14 +45,27 @@ public final class SpecLoader {
     }
 
     public static ModuleSpec load(Path file) throws IOException {
+        return load(file, null);
+    }
+
+    /**
+     * @param layoutOverride 命令行 {@code --layout} 的取值；{@code null} 表示命令行未指定，
+     *                       此时按「spec 的 {@code layout} 键 → {@code CODEGEN_LAYOUT} 环境变量
+     *                       → 默认 nested」的顺序决定
+     */
+    public static ModuleSpec load(Path file, String layoutOverride) throws IOException {
         // 显式指定 UTF-8：默认平台编码会在中文 Windows 上把注释读成乱码（CLAUDE.md 3.6）
         try (Reader r = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
-            return parse(new Yaml().load(r), file.getFileName().toString());
+            return parse(new Yaml().load(r), file.getFileName().toString(), layoutOverride);
         }
     }
 
-    @SuppressWarnings("unchecked")
     static ModuleSpec parse(Object raw, String source) {
+        return parse(raw, source, null);
+    }
+
+    @SuppressWarnings("unchecked")
+    static ModuleSpec parse(Object raw, String source, String layoutOverride) {
         List<String> errors = new ArrayList<>();
         if (!(raw instanceof Map)) {
             throw new SpecException(List.of(source + ": 根节点必须是对象（key: value 形式）"));
@@ -95,6 +109,9 @@ public final class SpecLoader {
             errors.add("fields 为空：至少需要一个业务字段（审计字段由 BaseEntity 提供，不要在此声明）");
         }
 
+        LayoutChoice layout = resolveLayout(
+                layoutOverride, root.get("layout"), System.getenv("CODEGEN_LAYOUT"), errors);
+
         if (!errors.isEmpty()) {
             throw new SpecException(errors.stream().map(e -> source + ": " + e).toList());
         }
@@ -102,7 +119,45 @@ public final class SpecLoader {
         return new ModuleSpec(basePackage, module, entity, table,
                 comment == null ? entity : comment,
                 apiPrefix == null ? "/api/" + module.replace('_', '-') : apiPrefix,
+                layout.layout(), layout.origin(),
                 fields);
+    }
+
+    /** 布局的最终取值及其来源。来源字符串直接用于生成时打印的「布局: ...（来自 ...）」提示行。 */
+    public record LayoutChoice(Layout layout, String origin) {
+    }
+
+    /**
+     * 按优先级决定包布局：命令行 {@code --layout} &gt; spec 的 {@code layout} 键 &gt;
+     * {@code CODEGEN_LAYOUT} 环境变量 &gt; 默认 {@code nested}。命中即用，不再往下看。
+     *
+     * <p>任何一处给了非法取值都记入 {@code errors} 并点明来源；
+     * 由调用方在收齐全部错误后统一抛出。
+     */
+    static LayoutChoice resolveLayout(String cliOverride, Object specValue, String envValue,
+                                      List<String> errors) {
+        if (cliOverride != null) {
+            return new LayoutChoice(parseLayout(cliOverride, "--layout 参数", errors), "--layout 参数");
+        }
+        if (specValue != null) {
+            return new LayoutChoice(
+                    parseLayout(String.valueOf(specValue), "spec 的 layout 键", errors),
+                    "spec 的 layout 键");
+        }
+        if (envValue != null && !envValue.isBlank()) {
+            return new LayoutChoice(
+                    parseLayout(envValue, "CODEGEN_LAYOUT 环境变量", errors),
+                    "CODEGEN_LAYOUT 环境变量");
+        }
+        return new LayoutChoice(Layout.NESTED, "默认");
+    }
+
+    private static Layout parseLayout(String value, String origin, List<String> errors) {
+        return Layout.of(value).orElseGet(() -> {
+            errors.add("layout 取值 \"" + value.trim() + "\"（来自 " + origin
+                    + "）非法，只能是 nested 或 flat");
+            return Layout.NESTED; // 占位；errors 非空时不会被真正使用
+        });
     }
 
     @SuppressWarnings("unchecked")

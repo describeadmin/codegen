@@ -267,4 +267,31 @@ class GeneratorTest {
                 "private static LocalDate asDate("), -1).length - 1;
         assertThat(declarations).as("asDate 应只定义一次").isEqualTo(1);
     }
+
+    // ------------------------------------------------------------------ 包布局
+
+    @Test
+    @DisplayName("默认 nested：包名带模块层级")
+    void nestedLayoutKeepsModuleSegment() {
+        assertThat(JavaGenerator.entity(spec)).contains("package com.example.demo.project.entity;");
+    }
+
+    @Test
+    @DisplayName("flat 布局：Java 包去掉模块层级，跨层 import 与 REST 路径不受影响")
+    void flatLayoutDropsModuleSegment() throws Exception {
+        ModuleSpec flat = SpecLoader.load(Path.of("examples/project.yaml"), "flat");
+
+        assertThat(JavaGenerator.entity(flat)).contains("package com.example.demo.entity;");
+        assertThat(JavaGenerator.mapper(flat))
+                .contains("package com.example.demo.mapper;")
+                .contains("import com.example.demo.entity.ProjectEntity;");
+
+        String controller = JavaGenerator.controller(flat);
+        assertThat(controller)
+                .contains("package com.example.demo.controller;")
+                .contains("import com.example.demo.service.ProjectService;")
+                .contains("@RequestMapping(\"/api/project\")");
+        // 不含模块段
+        assertThat(controller).doesNotContain("com.example.demo.project.");
+    }
 }

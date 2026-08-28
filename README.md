@@ -37,6 +37,7 @@ java -jar target/codegen.jar <spec.yaml> [选项]
 |---|---|
 | `--out DIR` | 后端输出根目录，默认当前目录 |
 | `--frontend-out DIR` | 前端输出根目录，默认 `<out>/frontend` |
+| `--layout nested\|flat` | 后端 Java 包布局，默认 `nested`（见下文「包布局」） |
 | `--force` | 覆盖已存在的文件（默认跳过） |
 | `--dry-run` | 只打印将生成的文件，不写盘 |
 
@@ -45,11 +46,13 @@ java -jar target/codegen.jar <spec.yaml> [选项]
 
 ## 产出
 
-**后端**
+**后端**（`<layer>` = `entity` / `mapper` / `service` / `controller`）
 
 | 文件 | 说明 |
 |---|---|
-| `src/main/java/<pkg>/<module>/entity/<Entity>Entity.java` | 继承 `BaseEntity` |
+| `src/main/java/<pkg>/<module>/<layer>/<Entity>*.java` | `nested` 布局（默认） |
+| `src/main/java/<pkg>/<layer>/<Entity>*.java` | `flat` 布局（`--layout flat`） |
+| `.../entity/<Entity>Entity.java` | 继承 `BaseEntity` |
 | `.../mapper/<Entity>Mapper.java` | 继承 `BaseMapper` |
 | `.../service/<Entity>Service.java` | 继承 `BaseService` |
 | `.../controller/<Entity>Controller.java` | 继承 `BaseController`，含五个标准端点；有 `query` 字段时覆写 `buildListWrapper` |
@@ -83,6 +86,32 @@ java -jar target/codegen.jar <spec.yaml> [选项]
 `data-testid` 的命名规则由 `VueGenerator` 单点提供，`TestSpecGenerator` 复用同一套；
 两处各写一套的后果是用例找不到元素，而现象看起来像"页面坏了"，排查方向一开始就会走偏。
 有一条测试专门断言 **Spec 引用的每个锚点在页面里都真实存在**。
+
+## 包布局
+
+后端 Java 文件默认落在 `<basePackage>.<module>.<layer>`（`nested`）。只有少量模块、
+不想要模块层级的小工程可以切到 `flat`——`<basePackage>.<layer>`：
+
+| 布局 | Controller 包名 |
+|---|---|
+| `nested`（默认） | `com.example.demo.project.controller` |
+| `flat` | `com.example.demo.controller` |
+
+`flat` **只影响后端 Java 包与文件落点**。前端目录、`schema-*.sql` / `menu-*.sql`、
+`test-specs/*.yaml`、权限点前缀、`@RequestMapping` 路径一律以模块名 / 表名为准，不变。
+
+取值优先级（命中即用）：
+
+1. `--layout <nested|flat>` 命令行参数
+2. spec 顶层 `layout:` 键
+3. `CODEGEN_LAYOUT` 环境变量（给工作空间设项目级默认）
+4. 内置默认 `nested`
+
+非法取值在任何一层都会 fail fast 并点明来源。切到非默认布局时，生成输出会多打一行
+`布局: flat（来自 …）`。
+
+> ⚠️ 生成器**从不删文件**。中途从 `nested` 切到 `flat`，旧的 `<module>/` 子包不会被清掉，
+> 需手工删除。布局最好开工即定。
 
 ## Spec 格式
 
