@@ -7,9 +7,9 @@
 框架基类，两者的兼容性必须成对理解；`workspace` 仓的 `codegen` skill 也据此「按框架版本
 取同号 jar」，不必试错。
 
-## 未发布（开发中）
+## 0.2.0 (2026-08-31)
 
-> `pom.xml` 已随 framework 升到 `0.2.0-SNAPSHOT`（2026-08-28 对齐）。下方条目发布时定为 `0.2.0`。
+与 framework 0.2.0 配套发布。
 
 ### Breaking Changes
 
