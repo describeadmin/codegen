@@ -21,6 +21,8 @@ import java.util.List;
  * @param table       表名，如 {@code biz_project}
  * @param comment     模块中文名，用于注释、DDL comment 与测试用例描述
  * @param apiPrefix   REST 路径前缀，默认 {@code /api/<module>}
+ * @param layout      后端 Java 包布局（{@code nested} / {@code flat}），只影响 {@link #packageOf}
+ * @param layoutOrigin 布局取值的来源，仅用于生成时的提示行（如「CODEGEN_LAYOUT 环境变量」）
  * @param fields      业务字段；审计字段由 BaseEntity 承担，不在此声明
  */
 public record ModuleSpec(
@@ -30,7 +32,17 @@ public record ModuleSpec(
         String table,
         String comment,
         String apiPrefix,
+        Layout layout,
+        String layoutOrigin,
         List<FieldSpec> fields) {
+
+    public ModuleSpec {
+        // 防御性兜底：解析器总会给出非空布局，这里仅保证 packageOf 不会 NPE
+        if (layout == null) {
+            layout = Layout.NESTED;
+            layoutOrigin = "默认";
+        }
+    }
 
     public String entityClass() {
         return entity + "Entity";
@@ -49,7 +61,10 @@ public record ModuleSpec(
     }
 
     public String packageOf(String layer) {
-        return basePackage + "." + module + "." + layer;
+        return switch (layout) {
+            case NESTED -> basePackage + "." + module + "." + layer;
+            case FLAT -> basePackage + "." + layer;
+        };
     }
 
     /** 实体名的小驼峰形式，用作变量名。 */

@@ -3,8 +3,46 @@
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)，
 每个版本固定分 **Breaking Changes / New Features / Bug Fixes** 三类。
 
-`codegen` 的版本号与 `framework` 保持一致：它生成的代码要继承框架基类，
-两者的兼容性必须成对理解。
+`codegen` 的版本号与 `framework` 保持一致（`develop_plan.md` §9.4）：它生成的代码要继承
+框架基类，两者的兼容性必须成对理解；`workspace` 仓的 `codegen` skill 也据此「按框架版本
+取同号 jar」，不必试错。
+
+## 0.2.0 (2026-08-31)
+
+与 framework 0.2.0 配套发布。
+
+### Breaking Changes
+
+- **`long` 类型字段生成的 TypeScript 类型由 `number` 改为 `string`**，
+  连带审计字段 `id`/`createBy`/`updateBy` 与 `update*Api(id)`/`delete*Api(id)`
+  的形参、`editingId`/`deletingId` 的 ref 类型。
+  框架 0.2.0 起把所有 `Long` 序列化成字符串（避免 19 位雪花 ID 被 JS 舍入），
+  生成的前端必须跟着变，否则类型与实际返回值对不上。
+  `version` 是 `Integer`，不在此列；`%sPage` 的 `total`/`pages`/`current`/`size`
+  也保持 `number`（框架用 `@JsonFormat(shape = NUMBER)` 排除了它们）。
+- **`long` 字段的表单控件由 `ElInputNumber` 改为 `ElInput`**。
+  v-model 现在是字符串，数字微调器接不住；而本框架里的 `long` 基本都是 ID 引用
+  （`ownerDeptId` 这类），微调器本就不是合适的控件。
+  搜索栏与表单初值同步改为空串。
+
+### New Features
+
+- 生成的 Controller 带 `permPrefix()` 显式覆写，消除模块名含下划线时
+  权限点静默错配、连 ADMIN 都被 403 的问题。
+- **新增 `flat` 包布局**：`--layout flat` 让后端 Java 文件落在
+  `<basePackage>.<layer>` 而非默认的 `<basePackage>.<module>.<layer>`，
+  面向不需要模块层级的小工程。取值优先级：`--layout` 参数 > spec 顶层 `layout:` 键 >
+  `CODEGEN_LAYOUT` 环境变量 > 默认 `nested`；非法取值在任何一层都 fail fast 并点明来源。
+  只影响后端 Java 包与文件落点，前端目录 / `schema-*.sql` / `menu-*.sql` /
+  `test-specs/*.yaml` / 权限点前缀 / `@RequestMapping` 一律不变。
+
+### Bug Fixes
+
+- 生成的 Controller 的 `permPrefix()` 覆写由 `protected` 改为 `public`。
+  `BaseController.permPrefix()` 自框架 0.2.0 起是 `public`（供 `OperLogAspect`
+  跨包读取），用 `protected` 覆写会因收窄可见性而编译不过。
+
+---
 
 ## 0.1.1 (2026-08-20)
 
@@ -73,7 +111,8 @@ Java 文件小得多，且错误在解析阶段就被明确指出，不必等编
 
 ### 已知限制
 
-- **Maven 插件形态（`describeadmin-codegen-maven-plugin`）尚未交付。**
-  设计上它才是主形态——写在 `pom.xml` 里是可被 AI Agent 发现的，
-  而一条需要外部记忆的 `java -jar` 命令不具备这个性质。当前只有 fat jar 形态。
+- ~~**Maven 插件形态（`describeadmin-codegen-maven-plugin`）尚未交付。**~~
+  **2026-08-28 更新：此形态已放弃**，codegen 只做可执行 fat jar。可发现性改由业务方
+  工作空间的 `CLAUDE.md` §6 + `workspace` 仓的 `codegen` skill 承担；jar 的获取/校验/
+  缓存也由该 skill 负责（`develop_plan.md` §9.4.1、§9.4.3）。
 - 生成产物覆盖单表 CRUD；关联表、树形结构等需手工调整。

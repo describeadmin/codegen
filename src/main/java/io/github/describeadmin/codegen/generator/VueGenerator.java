@@ -95,12 +95,18 @@ public final class VueGenerator {
                  */
                 import { requestClient } from '#/api/request';
 
-                /** 审计字段由后端 BaseEntity 承担，业务代码不要赋值。 */
+                /**
+                 * 审计字段由后端 BaseEntity 承担，业务代码不要赋值。
+                 *
+                 * id/createBy/updateBy 是 string 而非 number：后端把 Long 统一序列化成
+                 * 字符串，否则雪花 ID（19 位）会超出 JS 安全整数范围被静默舍入——
+                 * 列表看着正常，点编辑/删除却报「记录不存在」。version 是 Integer，不受影响。
+                 */
                 export interface %sAudit {
-                  createBy?: null | number;
+                  createBy?: null | string;
                   createTime?: null | string;
-                  id?: number;
-                  updateBy?: null | number;
+                  id?: string;
+                  updateBy?: null | string;
                   updateTime?: null | string;
                   version?: null | number;
                 }
@@ -131,11 +137,11 @@ public final class VueGenerator {
                   return requestClient.post<%s>('%s', data);
                 }
 
-                export async function update%sApi(id: number, data: %s) {
+                export async function update%sApi(id: string, data: %s) {
                   return requestClient.put<%s>(`%s/${id}`, data);
                 }
 
-                export async function delete%sApi(id: number) {
+                export async function delete%sApi(id: string) {
                   return requestClient.delete(`%s/${id}`);
                 }
                 """.formatted(
@@ -220,7 +226,7 @@ public final class VueGenerator {
 
                 const formVisible = ref(false);
                 const submitting = ref(false);
-                const editingId = ref<null | number>(null);
+                const editingId = ref<null | string>(null);
                 const formRef = ref();
 
                 const form = reactive({
@@ -232,7 +238,7 @@ public final class VueGenerator {
                 };
 
                 const confirmVisible = ref(false);
-                const deletingId = ref<null | number>(null);
+                const deletingId = ref<null | string>(null);
 
                 async function load() {
                   loading.value = true;
@@ -522,13 +528,23 @@ public final class VueGenerator {
                                 placeholder="请输入%s"
                               />
                     """.formatted(model, tid, f.comment()).stripTrailing();
-            case INT, LONG -> """
+            case INT -> """
                               <ElInputNumber
                                 v-model="%s"
                                 :step="1"
                                 data-testid="%s"
                               />
                     """.formatted(model, tid).stripTrailing();
+            // long 一律走文本框：后端把 Long 序列化成字符串（避免雪花 ID 被 JS 舍入），
+            // 数字微调器的 v-model 是 number，编辑现有记录时回填的字符串塞进去就是混合类型。
+            // 何况本框架里的 long 基本都是 ID 引用（ownerDeptId 这类），微调器本就不合适。
+            case LONG -> """
+                              <ElInput
+                                v-model="%s"
+                                data-testid="%s"
+                                placeholder="请输入%s"
+                              />
+                    """.formatted(model, tid, f.comment()).stripTrailing();
             case DECIMAL -> """
                               <ElInputNumber
                                 v-model="%s"
@@ -574,8 +590,8 @@ public final class VueGenerator {
 
     private static String controlOf(FieldType type) {
         return switch (type) {
-            case STRING, TEXT -> "ElInput";
-            case INT, LONG, DECIMAL -> "ElInputNumber";
+            case STRING, TEXT, LONG -> "ElInput";
+            case INT, DECIMAL -> "ElInputNumber";
             case FLAG -> "ElSwitch";
             case DATE, DATETIME -> "ElDatePicker";
         };
@@ -584,16 +600,16 @@ public final class VueGenerator {
     /** 表单初值。日期与文本给空串，数字给 undefined —— 0 是有意义的业务值，不能当"未填"。 */
     private static String initialValue(FieldSpec f) {
         return switch (f.type()) {
-            case STRING, TEXT, DATE, DATETIME -> "''";
-            case INT, LONG, DECIMAL -> "undefined as number | undefined";
+            case STRING, TEXT, DATE, DATETIME, LONG -> "''";
+            case INT, DECIMAL -> "undefined as number | undefined";
             case FLAG -> "1";
         };
     }
 
     private static String tsType(FieldType type) {
         return switch (type) {
-            case STRING, TEXT, DATE, DATETIME -> "string";
-            case INT, LONG, DECIMAL, FLAG -> "number";
+            case STRING, TEXT, DATE, DATETIME, LONG -> "string";
+            case INT, DECIMAL, FLAG -> "number";
         };
     }
 }

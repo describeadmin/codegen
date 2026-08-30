@@ -27,14 +27,18 @@
 
 | 项 | 取值 | 说明 |
 |---|---|---|
-| 构建 JDK | **21** | 通过 Maven Toolchains 指定，不依赖 `PATH` |
+| 构建 JDK | **17+** | 任意 JDK ≥ 17 均可；由 enforcer 的 `requireJavaVersion` 兜底，不再用 toolchains 钉版本 |
 | 编译目标 | **`maven.compiler.release=17`** | 产物必须能在 Java 17 上运行 |
 | Spring Boot | **3.5.16** | 不要升级到 4.x，理由见方案 2.2.1 |
 | Jackson | **2.x**（`com.fasterxml.jackson.*`） | 不要使用 `tools.jackson.*`（那是 Jackson 3） |
 | Node / pnpm | node `^22.18 \|\| ^24.12`，pnpm `>=11` | |
 
-**不要用 `java -version` 判断构建 JDK**——本项目通过 toolchains 选择 JDK，
-`PATH` 上是什么与构建用什么无关。首次配置见 `scripts/toolchains.xml.sample`。
+**构建 JDK 只要求 ≥ 17**——`maven.compiler.release=17` 已保证产物在 Java 17 上运行，
+构建用 17 / 21 / 25 都行，`PATH` 上默认是哪个 `java` 无所谓（低于 17 会被 enforcer 拦下）。
+`framework` / 各插件 / `codegen` 均**不再用 `maven-toolchains-plugin`**——钉死具体版本只会让没配
+`~/.m2/toolchains.xml` 的人以 `Cannot find matching toolchain` 直接构建失败，比它要防的坑更劝退
+（见 develop_plan.md 2.2.2 与 VERSION_BASELINE 第八轮）。唯一仍配 toolchains 的是 `sample-app`，
+它刻意钉 JDK 17，用最低支持版本验证兼容承诺。
 
 **版本核查纪律**：任何依赖版本以 `https://repo1.maven.org/maven2/**/maven-metadata.xml`
 和 `https://registry.npmjs.org/<pkg>` 为准。
@@ -66,6 +70,10 @@ io.github.describeadmin.<模块>
 ```
 
 `api/` 包下的任何 public 签名变更都是 Breaking Change。
+
+**`util/` 不在兼容性承诺范围内**，因此它只放模块内部用的东西。
+真要给业务方用的工具必须放 `api/`——但在放进去之前先读 4.7，
+多数"工具类"根本不该进框架。
 
 ---
 
@@ -215,6 +223,164 @@ Controller 一律返回 `Result<T>`，不要自行拼装响应结构。
 
 命名格式：`<模块>-<对象>-<动作>`。没有 `data-testid` 的交互元素视为未完成。
 
+### 4.5 权限点
+
+命名固定为 `<模块>:<对象>:<动作>`，动作只有四个：`list` / `add` / `edit` / `remove`。
+`seed-rbac.sql` 的种子数据与 codegen 的 `menu-*.sql` 都按这套产出，不要另立一套。
+
+```java
+// 继承 BaseController 的五个通用端点自动校验，无需写任何注解
+// 前缀由 @RequestMapping 推导：/api/system/user -> system:user
+
+// 自定义端点用 Spring Security 原生注解，不要自造
+@PreAuthorize("hasAuthority('system:user:edit')")
+@PutMapping("/{userId}/password")
+public Result<Void> resetPassword(...) { ... }
+```
+
+三条必须知道的事：
+
+1. **推导与授权数据必须对得上**。`apiPrefix` 自定义过、或模块名含下划线时
+   （默认 `my_module` → `/api/my-module`，推导得 `my-module`，而权限点是 `my_module`），
+   推导结果会与 `menu-*.sql` 登记的权限点错配，**表现为连 ADMIN 都被 403**，
+   且错误信息里没有任何东西指向前缀。codegen 已改为直接生成 `permPrefix()` 覆写；
+   手写的 Controller 需自行覆写。
+2. **新增模块必须同时登记权限点并授权**。只建表不登记 `menu-*.sql`，
+   接口会 403 而侧边栏根本没有入口，两个症状都不指向"忘了授权"。
+3. **权限快照在登录时确定**。改了角色授权不会对已登录会话实时生效，
+   需重新登录或吊销令牌——这是不透明令牌设计的既有取舍。
+
+排查时可用 `describeadmin.security.permission-enabled=false` 临时关闭校验，
+但关闭状态下**任何已登录账号都能调用任何接口**，权限点仍会下发给前端用于按钮显隐，
+于是界面看起来受控、实际不受控。不要用于生产。
+
+
+### 4.6 插件
+
+新增能力前先判断它该进核心还是做插件。满足下面任一条 → **必须做插件**：
+
+- 绑定具体外部系统或厂商（钉钉、浙政钉、OSS）
+- 引入重量级依赖（Redis、POI、springdoc、Quartz、HTTP client）
+- 只有部分项目需要
+- 同一能力有多种互斥实现
+
+核心只保留**契约 + 零依赖的默认实现**（现成范式：`CacheProvider` + `InMemoryCacheProvider`、
+`TokenStore` + `InMemoryTokenStore`）。核心模块的重依赖由 framework 父 POM 的
+`enforce-core-thin` 这条 enforcer 规则在构建期堵死。
+
+**插件一律独立成仓**，不作为 `framework` 仓的 module —— 版本线与发布都不绑定框架。
+插件 POM **不继承 `framework-parent`**，改为 `import framework-bom`：那正是业务方消费框架的
+姿势，插件用同一套姿势才能提前暴露业务方会遇到的问题。代价是构建配置要自带一份
+（`release=17`、surefire 编码、enforcer 的 `requireJavaVersion` + JDBC 驱动 + Jackson 3 三条），
+但**不带** `enforce-core-thin` —— 插件的职责就是引入那些重依赖。
+
+由此还有两条容易出错的：
+
+- 插件必须声明**适配的最低框架版本**，并在三处保持一致：`registry.md` 的表格、
+  POM 里 import 的 `framework-bom` 版本、代码里的常量 + `FrameworkVersion.requireCompatible()`
+  启动期自检。只有第三处真正生效——插件以 `provided` 依赖框架，
+  **运行时的框架版本由业务方决定**，不是插件构建时那个
+- `framework-bom` **刻意不仲裁插件版本**。插件版本与框架版本无对应关系，
+  写进 BOM 会让业务方拿到一个与框架同号、根本不存在的制品
+
+写插件的完整规范见 **`docs/registry.md`**，新增插件必须同时登记到那里和 `repos.yml`。
+其中最容易出错、且失败最隐蔽的一条摘在这里：
+
+> 核心用 `@ConditionalOnMissingBean` 提供默认实现，该条件**只检查当前已注册的 Bean 定义**。
+> 插件若晚于核心被评估，插件的 Bean 会被自己的条件挡掉——**引了却没生效，启动毫无异常**。
+> 插件必须显式声明 `@AutoConfiguration(before = ...)`；对 `optional` 依赖一律用
+> `beforeName` 的**字符串**形式，写成 `before = Xxx.class` 会在该模块缺席时加载即失败。
+
+插件必须提供运行时开关（`@ConditionalOnProperty`），关掉后行为与"没引这个 jar"完全一致；
+并且必须同时测"不引 = 行为不变"和"引了 = 能力生效"两条路径。
+
+> **例外：`sys_user.mobile`/`sys_user.email`**。按上面的标准，"只有部分项目需要"的手机号/邮箱
+> 登录本该整体插件化，但"用户是否有手机号/邮箱"这个属性本身足够稳定、足够通用，
+> 值得直接进核心 `sys_user` 表（详见 `docs/LOGIN_MODULE_AUDIT.md` F 项）。
+> 真正插件化的是"能不能用手机号/邮箱登录"——这两个字段存在不代表对应的 `AuthProvider`
+> 已安装，未装插件时它们只是普通联系方式。核心因此没有违反"不出现具体登录方式"的边界：
+> `mobile`/`email` 是数据字段，不是某个厂商或某种验证机制的名字。
+> 后续若出现这两个字段覆盖不了的身份属性需求，走框架版本升级新增，不在核心表里预先堆列。
+
+### 4.7 工具类：进核心还是根本不做
+
+4.6 的四条判据是给**能力**用的。工具类大多是零依赖纯函数，四条一条都不命中，
+照搬会得出"全都能进核心"的错误结论。工具类用这一条：
+
+> **只有"必须挂在框架装配点上才成立"的工具才进核心**——它要么改变框架已有行为
+> （Jackson 序列化、审计填充），要么固化一个框架已经替业务方做过的语义决定
+> （分页元信息的边界、树结构、脱敏口径）。
+> **纯粹是"少写几行 JDK 调用"的工具一律不做。**
+
+理由是成本结构不对称：这类工具进了 `api/` 就是 SemVer 承诺，**删不掉**，
+而收益只是省几行 `LocalDate.now().plusDays(7)`。是净负债。
+
+据此**明确不做**（这些结论已经论证过，不要再翻出来重提）：
+
+- `StringUtils` / `CollectionUtils` / `BeanUtils` / `JsonUtils`——Spring 自带前三个，
+  `Objects` / `String.isBlank()` 覆盖其余。框架再出一套的唯一效果是
+  "三个 StringUtils 该 import 哪个"
+- 传统 `DateUtils`（format / parse / 加减 / 取月初月末）——java.time 时代已无存在价值。
+  时间相关真正该做的三件是 4.8 的序列化格式、可注入的 `Clock`、以及把时区口径写进文档
+  （DB `DATETIME` → Java `LocalDateTime` → 前端按浏览器本地，链路上不出现
+  `Date`/`Timestamp`/`Instant` 就自洽），**没有一件是工具类**
+- **不引 Hutool**——~1.5MB 单体依赖、版本节奏与框架无关，且它大量工具做的正是
+  本文件明令禁止的事（各种 `Date` 转换）。业务方想用自己引
+
+### 4.8 JSON 序列化约定
+
+由 `framework-web-starter` 的 `FrameworkJsonModule` 统一承担，
+开关前缀 `describeadmin.web.json.*`。三条硬约定：
+
+| 约定 | 值 | 为什么 |
+|---|---|---|
+| `Long` / `long` → **字符串** | 默认开 | 雪花 ID 是 19 位，超过 JS `Number.MAX_SAFE_INTEGER`（16 位），前端 `JSON.parse` 会静默舍入末几位——**列表显示正常，点编辑/删除报「记录不存在」或改错行**。3.3 明确支持切雪花，框架就得保证切过去之后是对的 |
+| 时间输出 | `yyyy-MM-dd HH:mm:ss` / `yyyy-MM-dd` / `HH:mm:ss` | 与 codegen 生成的日期选择器 `value-format` 对齐 |
+| 时间输入 | **出严进宽**：`T` 与空格分隔都接受，秒与小数秒可省 | 不打断已经在发 ISO 的调用方 |
+
+两条容易踩的：
+
+1. **要保持数字形态的 `Long` 字段，用 `@JsonFormat(shape = JsonFormat.Shape.NUMBER)` 排除。**
+   框架自己在 `PageResult` 的 `total`/`current`/`size`/`pages` 上用了它——分页元信息
+   不可能接近 2^53，而 `el-pagination` 的 `:total` 要求数字。这是**唯一**的例外，
+   新增例外要有同等强度的理由。
+2. **绝不要自己声明 `@Bean ObjectMapper`。** 那会顶掉 Spring Boot 的全部默认配置，
+   并让业务方的 `spring.jackson.*` 全部失效。要改约定就加 `Module` Bean，
+   Boot 会自动收集，且注册在内置 `JavaTimeModule` 之后，天然覆盖。
+
+`BigDecimal` **刻意不转字符串**：金额按 2 位小数计，double 精确到 2^53 分
+（约 90 万亿元），远超实际业务范围；转成字符串反而让前端数字输入框与排序都变麻烦。
+确有超高精度需求的业务方自行在字段上加 `@JsonSerialize(using = ToStringSerializer.class)`。
+
+### 4.9 ⚠️ Tailwind v4 覆盖不了 Element Plus 默认样式（层叠层陷阱）
+
+Tailwind v4（`@import 'tailwindcss'`）把自己生成的全部工具类放进
+`@layer theme, base, components, utilities`。Element Plus 的组件 CSS
+（`el-input.css`/`el-select.css` 等）是**未分层**的普通 CSS，且大量组件把
+宽度写死为 `width: 100%`（`.el-input`/`.el-select` 都有
+`--el-input-width: 100%` 这类声明）。
+
+按 CSS Cascade Layers 规范，**未分层规则无论特异度、无论加载顺序，一律压过
+任意已分层规则**。因此想用裸 Tailwind 类覆盖 Element Plus 默认样式的写法
+（比如 `class="w-48"` 想让 `ElInput` 变窄）永远不生效——不是类名写错，是
+写了也没用。
+
+**症状极具欺骗性**：类确实生成了、确实作用在了对的元素上，`display`/`gap`/
+`margin` 这类组件库自己没声明的属性能正常生效，唯独 `width`/`color` 这类
+组件库自己也声明了的属性怎么都覆盖不了，容易误判为"没被 Tailwind 扫描到"
+去改 `@source` 路径——那条路径本来就是对的。这与 3.6 节"不能仅凭现象猜原因"
+是同一类问题。
+
+**修复**：改用 Tailwind v4 的 `!` 重要性前缀（`!w-48` 而不是 `w-48`）。
+`!important` 不受层级顺序约束，可靠覆盖组件库的未分层样式。
+
+**核实方法**：组件库对应 CSS 文件里搜不到 `@layer` 包裹就是未分层；
+`tailwindcss` 包的 `index.css` 能看到自己是否把 utilities 放进了
+`@layer`（v4 默认如此）。
+
+首次踩坑记录：`views/oper-log/index.vue` 筛选栏，三个控件的宽度类从未生效，
+`flex-wrap` 逐个把它们挤到下一行，表现为"查询参数一个一行"。
+
 ---
 
 ## 5. 兼容性与发布
@@ -232,7 +398,7 @@ Controller 一律返回 `Result<T>`，不要自行拼装响应结构。
 # 拉取全部仓库到工作区
 ./scripts/clone-all.sh
 
-# 构建（依赖 toolchains，与 PATH 上的 java 无关）
+# 构建（任意 JDK ≥ 17 即可，无需 toolchains）
 mvn -f framework/pom.xml clean install
 
 # 跳过 GPG 签名的本地安装
@@ -249,6 +415,8 @@ mvn -f framework/pom.xml clean verify -Prelease -Dgpg.skip=true
 
 ## 7. 给 AI Agent 的额外提示
 
+- **开工前先读 `docs/PROGRESS.md`**——它写「现在到哪了、下一步做什么」。
+  多仓拓扑下，"本地已完成但尚未推上 GitHub"是常态，光看远端仓库会得出错误结论
 - **改动前先读 `develop_plan.md` 对应章节**，本文件只写结论不写理由，理由在方案里
 - 遇到版本问题查 `VERSION_BASELINE.md`，里面记录了已核验的事实和已知的错误信息源
 - 本项目多处决策是**有意选择上一代技术**（Spring Boot 3.5 而非 4.x、Jackson 2 而非 3），

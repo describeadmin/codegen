@@ -62,6 +62,10 @@ class GeneratorTest {
                 "extends BaseController<ProjectService, ProjectMapper, ProjectEntity>");
         assertThat(src).contains("@RequestMapping(\"/api/project\")");
         assertThat(src).contains("protected ProjectService getService()");
+        // BaseController.permPrefix() 自 0.2.0 起是 public——覆写不能收窄可见性，
+        // 写成 protected 会编译不过（实测在 sample-app 上踩过）
+        assertThat(src).contains("public String permPrefix()");
+        assertThat(src).doesNotContain("protected String permPrefix()");
     }
 
     @Test
@@ -266,5 +270,32 @@ class GeneratorTest {
         int declarations = src.split(java.util.regex.Pattern.quote(
                 "private static LocalDate asDate("), -1).length - 1;
         assertThat(declarations).as("asDate 应只定义一次").isEqualTo(1);
+    }
+
+    // ------------------------------------------------------------------ 包布局
+
+    @Test
+    @DisplayName("默认 nested：包名带模块层级")
+    void nestedLayoutKeepsModuleSegment() {
+        assertThat(JavaGenerator.entity(spec)).contains("package com.example.demo.project.entity;");
+    }
+
+    @Test
+    @DisplayName("flat 布局：Java 包去掉模块层级，跨层 import 与 REST 路径不受影响")
+    void flatLayoutDropsModuleSegment() throws Exception {
+        ModuleSpec flat = SpecLoader.load(Path.of("examples/project.yaml"), "flat");
+
+        assertThat(JavaGenerator.entity(flat)).contains("package com.example.demo.entity;");
+        assertThat(JavaGenerator.mapper(flat))
+                .contains("package com.example.demo.mapper;")
+                .contains("import com.example.demo.entity.ProjectEntity;");
+
+        String controller = JavaGenerator.controller(flat);
+        assertThat(controller)
+                .contains("package com.example.demo.controller;")
+                .contains("import com.example.demo.service.ProjectService;")
+                .contains("@RequestMapping(\"/api/project\")");
+        // 不含模块段
+        assertThat(controller).doesNotContain("com.example.demo.project.");
     }
 }

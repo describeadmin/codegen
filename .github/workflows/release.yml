@@ -4,7 +4,8 @@
 # develop_plan.md 9.4 定了一条硬规定：codegen 绝不出现在业务方 pom.xml 的
 # <dependencies> 中——它是命令行工具，不是库，运行时不需要任何框架类。
 # 既然没有"依赖它"的消费者，发到 Central 就没有意义。
-# Central 只对未来的 describeadmin-codegen-maven-plugin 形态有价值（9.4.1 的"主"形态）。
+# （曾设想的 describeadmin-codegen-maven-plugin 形态会需要 Central，但已于
+#  2026-08-28 放弃——codegen 只做 fat jar，见 develop_plan.md §9.4.1。）
 #
 # 与 Central 不同，GitHub Release 可以删除重发，因此这条链路是可逆的。
 #

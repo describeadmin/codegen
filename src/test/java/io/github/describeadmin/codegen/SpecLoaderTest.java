@@ -2,14 +2,18 @@ package io.github.describeadmin.codegen;
 
 import io.github.describeadmin.codegen.model.FieldSpec;
 import io.github.describeadmin.codegen.model.FieldType;
+import io.github.describeadmin.codegen.model.Layout;
 import io.github.describeadmin.codegen.model.ModuleSpec;
 import io.github.describeadmin.codegen.parser.SpecException;
 import io.github.describeadmin.codegen.parser.SpecLoader;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.yaml.snakeyaml.Yaml;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -195,5 +199,84 @@ class SpecLoaderTest {
         ModuleSpec s = SpecLoader.load(Path.of("examples/project.yaml"));
         assertThat(s.module()).isEqualTo("project");
         assertThat(s.fields()).hasSize(7);
+    }
+
+    @Nested
+    @DisplayName("包布局 nested / flat")
+    class PackageLayout {
+
+        @Test
+        @DisplayName("默认 nested：包名带模块层级")
+        void defaultsToNested() {
+            ModuleSpec s = parse(MINIMAL);
+            assertThat(s.layout()).isEqualTo(Layout.NESTED);
+            assertThat(s.layoutOrigin()).isEqualTo("默认");
+            assertThat(s.packageOf("entity")).isEqualTo("com.example.demo.project.entity");
+        }
+
+        @Test
+        @DisplayName("spec 的 layout: flat 让包名去掉模块层级")
+        void specKeyFlat() {
+            ModuleSpec s = parse(MINIMAL + "layout: flat\n");
+            assertThat(s.layout()).isEqualTo(Layout.FLAT);
+            assertThat(s.layoutOrigin()).isEqualTo("spec 的 layout 键");
+            assertThat(s.packageOf("controller")).isEqualTo("com.example.demo.controller");
+            // 前端 / SQL / 权限点一律不受影响
+            assertThat(s.apiPrefix()).isEqualTo("/api/project");
+        }
+
+        @Test
+        @DisplayName("命令行 --layout 压过 spec 的 layout 键")
+        void cliOverridesSpec() {
+            ModuleSpec s = SpecLoaderTestAccess.parse(new Yaml().load(MINIMAL + "layout: flat\n"),
+                    "nested");
+            assertThat(s.layout()).isEqualTo(Layout.NESTED);
+            assertThat(s.layoutOrigin()).isEqualTo("--layout 参数");
+        }
+
+        @Test
+        @DisplayName("非法取值 fail fast，并点明来源与合法值")
+        void illegalValueRejected() {
+            assertThatThrownBy(() -> parse(MINIMAL + "layout: sideways\n"))
+                    .isInstanceOf(SpecException.class)
+                    .hasMessageContaining("sideways")
+                    .hasMessageContaining("spec 的 layout 键")
+                    .hasMessageContaining("只能是 nested 或 flat");
+        }
+
+        @Test
+        @DisplayName("优先级：--layout > spec > CODEGEN_LAYOUT > 默认")
+        void precedence() {
+            assertThat(resolve(null, null, null).layout()).isEqualTo(Layout.NESTED);
+            assertThat(resolve(null, null, "flat").layout()).isEqualTo(Layout.FLAT);
+            assertThat(resolve(null, null, "flat").origin()).isEqualTo("CODEGEN_LAYOUT 环境变量");
+            // spec 压过环境变量
+            assertThat(resolve(null, "nested", "flat").layout()).isEqualTo(Layout.NESTED);
+            assertThat(resolve(null, "nested", "flat").origin()).isEqualTo("spec 的 layout 键");
+            // CLI 压过一切
+            assertThat(resolve("flat", "nested", "nested").layout()).isEqualTo(Layout.FLAT);
+            // 空白的环境变量视作未设置
+            assertThat(resolve(null, null, "   ").layout()).isEqualTo(Layout.NESTED);
+            assertThat(resolve(null, null, "   ").origin()).isEqualTo("默认");
+        }
+
+        @Test
+        @DisplayName("非法的 CODEGEN_LAYOUT 也被拦下并点名来源")
+        void illegalEnvValueRejected() {
+            List<String> errors = new ArrayList<>();
+            SpecLoaderTestAccess.resolveLayout(null, null, "bogus", errors);
+            assertThat(errors).hasSize(1);
+            assertThat(errors.get(0))
+                    .contains("bogus")
+                    .contains("CODEGEN_LAYOUT 环境变量")
+                    .contains("只能是 nested 或 flat");
+        }
+
+        private SpecLoader.LayoutChoice resolve(String cli, Object spec, String env) {
+            List<String> errors = new ArrayList<>();
+            SpecLoader.LayoutChoice c = SpecLoaderTestAccess.resolveLayout(cli, spec, env, errors);
+            assertThat(errors).as("合法输入不应产生错误").isEmpty();
+            return c;
+        }
     }
 }
