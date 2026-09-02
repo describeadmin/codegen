@@ -7,6 +7,25 @@
 框架基类，两者的兼容性必须成对理解；`workspace` 仓的 `codegen` skill 也据此「按框架版本
 取同号 jar」，不必试错。
 
+## Unreleased
+
+### Breaking Changes
+
+- **生成的 Java 代码改用 Lombok**：Entity 用 `@Getter` / `@Setter` 取代逐字段手写的
+  访问器，Controller 用 `@RequiredArgsConstructor` 取代手写的注入构造器。
+  消费方工程的 `pom.xml` 必须声明 `org.projectlombok:lombok` 依赖（`archetype`
+  生成的新工程已预置；用新版 codegen 重生成的既有工程需自行补一行，
+  版本不用写，由 `spring-boot-dependencies` 仲裁），否则生成物编译不过。
+  Mapper / Service 模板不变。
+
+### New Features
+
+- 无
+
+### Bug Fixes
+
+- 无
+
 ## 0.2.0 (2026-08-31)
 
 与 framework 0.2.0 配套发布。

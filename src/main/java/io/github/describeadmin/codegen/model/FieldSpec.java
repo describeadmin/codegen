@@ -49,9 +49,4 @@ public record FieldSpec(
         }
         return type.sqlType();
     }
-
-    /** getter/setter 用的首字母大写形式。 */
-    public String capitalized() {
-        return Character.toUpperCase(name.charAt(0)) + name.substring(1);
-    }
 }

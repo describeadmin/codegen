@@ -45,6 +45,19 @@ class GeneratorTest {
     }
 
     @Test
+    @DisplayName("实体访问器由 Lombok 承担，不逐字段手写 get/set")
+    void entityUsesLombokAccessors() {
+        String src = JavaGenerator.entity(spec);
+        assertThat(src).contains("import lombok.Getter;");
+        assertThat(src).contains("import lombok.Setter;");
+        assertThat(src).contains("@Getter");
+        assertThat(src).contains("@Setter");
+        // 一条手写访问器都不该有
+        assertThat(src).doesNotContain("public String getProjectName()");
+        assertThat(src).doesNotContain("public void set");
+    }
+
+    @Test
     @DisplayName("按需生成 import，不生成 java.lang 下的类型")
     void entityImports() {
         String src = JavaGenerator.entity(spec);
@@ -62,6 +75,11 @@ class GeneratorTest {
                 "extends BaseController<ProjectService, ProjectMapper, ProjectEntity>");
         assertThat(src).contains("@RequestMapping(\"/api/project\")");
         assertThat(src).contains("protected ProjectService getService()");
+        // 依赖注入构造器交给 Lombok，不再手写
+        assertThat(src).contains("import lombok.RequiredArgsConstructor;");
+        assertThat(src).contains("@RequiredArgsConstructor");
+        assertThat(src).contains("private final ProjectService projectService;");
+        assertThat(src).doesNotContain("public ProjectController(");
         // BaseController.permPrefix() 自 0.2.0 起是 public——覆写不能收窄可见性，
         // 写成 protected 会编译不过（实测在 sample-app 上踩过）
         assertThat(src).contains("public String permPrefix()");
@@ -254,22 +272,23 @@ class GeneratorTest {
     }
 
     @Test
-    @DisplayName("参数转换失败返回 400 而不是 500")
-    void malformedQueryParamIsClientError() {
+    @DisplayName("取参与类型转换委托给 BaseController，生成物里不内联这些方法")
+    void parsersAreDelegatedToBaseController() {
         String src = JavaGenerator.controller(spec);
-        // 「日期填错了」是使用者的输入问题，报 500 会把排查方向带偏
-        assertThat(src).contains("ResultCode.BAD_REQUEST");
-        assertThat(src).contains("参数格式不正确");
-    }
 
-    @Test
-    @DisplayName("同一种类型的转换方法只生成一份")
-    void parsersAreDeduplicated() {
-        String src = JavaGenerator.controller(spec);
-        // startDate 是 range，会用两次 asDate，但方法只能有一个
-        int declarations = src.split(java.util.regex.Pattern.quote(
-                "private static LocalDate asDate("), -1).length - 1;
-        assertThat(declarations).as("asDate 应只定义一次").isEqualTo(1);
+        // 调用继承自 BaseController 的 text / asXxx —— 只调用不声明
+        assertThat(src).contains("asDate(params, \"startDateStart\")");
+        assertThat(src).contains("asInt(params, \"status\")");
+        assertThat(src).contains("asLong(params, \"ownerDeptId\")");
+
+        // 不再逐个 Controller 生成解析辅助方法（口径统一在框架侧演进）
+        assertThat(src).doesNotContain("private static String text(");
+        assertThat(src).doesNotContain("private static LocalDate asDate(");
+        assertThat(src).doesNotContain("private static Integer asInt(");
+
+        // 400 语义与异常类型现在都在 BaseController 里，生成物无需再 import
+        assertThat(src).doesNotContain("ResultCode.BAD_REQUEST");
+        assertThat(src).doesNotContain("import io.github.describeadmin.common.api.BizException;");
     }
 
     // ------------------------------------------------------------------ 包布局
