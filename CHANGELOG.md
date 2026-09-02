@@ -7,7 +7,10 @@
 框架基类，两者的兼容性必须成对理解；`workspace` 仓的 `codegen` skill 也据此「按框架版本
 取同号 jar」，不必试错。
 
-## Unreleased
+## 0.2.1 (2026-09-02)
+
+与 framework 0.2.1 配套发布。生成物继续「变薄」：Lombok 消掉逐字段样板，
+列表取参逻辑上移框架基类。**需搭配 framework ≥ 0.2.1**。
 
 ### Breaking Changes
 
@@ -17,6 +20,11 @@
   生成的新工程已预置；用新版 codegen 重生成的既有工程需自行补一行，
   版本不用写，由 `spring-boot-dependencies` 仲裁），否则生成物编译不过。
   Mapper / Service 模板不变。
+- **列表查询取参方法 `text` / `asInt` / `asLong` / `asDecimal` / `asDate` /
+  `asDateTime` 不再内联进每个 Controller**，改为调用 framework 0.2.1 起
+  `BaseController` 提供的 `protected static` 方法。用 0.2.1 codegen 重生成的代码
+  **必须搭配 framework ≥ 0.2.1**，否则编译报找不到符号。生成物行为不变
+  （空串按未填、非法值 400）。
 
 ### New Features
 
