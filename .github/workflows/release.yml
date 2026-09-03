@@ -7,7 +7,9 @@
 # （曾设想的 describeadmin-codegen-maven-plugin 形态会需要 Central，但已于
 #  2026-08-28 放弃——codegen 只做 fat jar，见 develop_plan.md §9.4.1。）
 #
-# 与 Central 不同，GitHub Release 可以删除重发，因此这条链路是可逆的。
+# 与 Central 不同，GitHub Release 可以删除重发，因此这条链路是可逆的——
+# 也因此这里【不设 environment 审批闸门】：推 tag 即自动完成发布。
+# 那道人工闸门是给不可逆的 Maven Central 用的（见 framework 仓 / RELEASE.md §3.3）。
 #
 # 触发：打 tag v* 自动发布；或手动触发（默认 dry-run，只构建校验不建 Release）。
 
@@ -26,7 +28,6 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
-    environment: maven-central
     permissions:
       contents: write        # 创建 Release 需要写权限
 
