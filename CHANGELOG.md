@@ -7,6 +7,31 @@
 框架基类，两者的兼容性必须成对理解；`workspace` 仓的 `codegen` skill 也据此「按框架版本
 取同号 jar」，不必试错。
 
+> 0.2.2 是刻意的例外：只有 codegen 发了 0.2.2（改动是少生成一个文件，无兼容影响），
+> framework 停在 0.2.1。skill 按框架版本仍会取 codegen 0.2.1，要用 0.2.2 得显式设
+> `CODEGEN_VERSION`。
+
+## 0.2.2 (2026-09-03)
+
+**本次仅 codegen 发版，framework / frontend 保持 0.2.1。** 开头那条「版本号与 framework
+一致」的约定本次刻意破例：唯一改动是少生成一个文件，生成的 Java / SQL / Vue 与 0.2.1
+逐字节相同，codegen 0.2.2 与 framework 0.2.1 完全兼容。**仍需搭配 framework ≥ 0.2.1。**
+
+### Breaking Changes
+
+- **不再生成 `test-specs/<module>.yaml` 结构化验收用例**。`TestSpecGenerator` 连同
+  相关测试一并移除。原产物是给一套始终没落地的「结构化用例执行器」用的，
+  长期无人消费；前端页面的 `data-testid` 锚点（命名 `<模块>-<对象>-<动作>`）
+  仍照常生成，自动化测试按需自行编写。其余产物、包布局、优先级规则均不变。
+
+### New Features
+
+- 无
+
+### Bug Fixes
+
+- 无
+
 ## 0.2.1 (2026-09-02)
 
 与 framework 0.2.1 配套发布。生成物继续「变薄」：Lombok 消掉逐字段样板，

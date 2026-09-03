@@ -3,7 +3,6 @@ package io.github.describeadmin.codegen;
 import io.github.describeadmin.codegen.generator.DdlGenerator;
 import io.github.describeadmin.codegen.generator.JavaGenerator;
 import io.github.describeadmin.codegen.generator.MenuSqlGenerator;
-import io.github.describeadmin.codegen.generator.TestSpecGenerator;
 import io.github.describeadmin.codegen.generator.VueGenerator;
 import io.github.describeadmin.codegen.model.Layout;
 import io.github.describeadmin.codegen.model.ModuleSpec;
@@ -162,9 +161,6 @@ public final class CodegenCli {
         files.put(frontendOut.resolve("src/views").resolve(s.module()).resolve("index.vue"),
                 VueGenerator.page(s));
 
-        // ---- 验收用例 ----
-        files.put(outDir.resolve("test-specs").resolve(s.module() + ".yaml"),
-                TestSpecGenerator.generate(s));
         return files;
     }
 
@@ -209,9 +205,6 @@ public final class CodegenCli {
                 产出（前端）:
                   src/api/<module>.ts
                   src/views/<module>/index.vue
-
-                产出（验收）:
-                  test-specs/<module>.yaml          结构化端到端验收用例
 
                 注意: 前端 accessMode = backend，路由由 sys_menu 下发。
                       menu-<table>.sql 必须执行，否则页面在系统里不可达。

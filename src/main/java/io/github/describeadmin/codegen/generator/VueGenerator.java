@@ -10,18 +10,13 @@ import java.util.stream.Collectors;
 /**
  * 生成前端页面与接口封装。
  *
- * <p><b>为什么这部分不能缺</b>：生成器产出的测试 Spec 断言的是
- * {@code [data-testid="xxx-add-btn"]} 这类选择器。如果页面不生成，
- * 那份 Spec 按定义就是跑不起来的——「代码与验收用例一起生成」只兑现了一半。
- * 本类补的正是另一半。
- *
  * <p>产出结构照搬 framework-system-starter 四个系统管理页面的既有形态
  * （列表 + 表单弹窗 + 受控删除确认），那套形态已经端到端跑通过，
  * 不另起炉灶。
  *
- * <p><b>data-testid 命名必须与 {@link TestSpecGenerator} 完全一致</b>，
- * 两者各写一套就会出现「用例找不到元素」而看起来像页面坏了。
- * 命名规则集中在本类的 {@code testId*} 方法里，Spec 生成器复用同一套规则。
+ * <p>所有关键交互元素都带 {@code data-testid}（命名 {@code <模块>-<对象>-<动作>}，
+ * 见 CLAUDE.md 4.4），供 AI 自动化测试定位。命名规则集中在本类的
+ * {@code testId*} 方法里。
  */
 public final class VueGenerator {
 

@@ -66,26 +66,16 @@ java -jar target/codegen.jar <spec.yaml> [选项]
 | `src/api/<module>.ts` | 类型定义与四个接口封装 |
 | `src/views/<module>/index.vue` | 列表 + 搜索栏 + 表单弹窗 + 受控删除确认 |
 
-**验收**
-
-| 文件 | 说明 |
-|---|---|
-| `test-specs/<module>.yaml` | **结构化端到端验收用例** |
-
 ### 为什么菜单 SQL 不能少
 
 前端 `accessMode: 'backend'`，路由完全由 `sys_menu` 表下发。
 **只生成 `.vue` 文件而没有菜单行，页面在系统里根本不可达**——访问对应路径会落到 404，
 侧边栏也不会出现入口。这一条在本项目实测踩过，所以由生成器一并产出。
 
-### 为什么页面也要生成
+### 关于 data-testid
 
-生成的测试 Spec 断言的是 `[data-testid="xxx-add-btn"]` 这类选择器。
-页面不生成的话，那份 Spec **按定义就是跑不起来的**——「代码与验收用例一起生成」只兑现一半。
-
-`data-testid` 的命名规则由 `VueGenerator` 单点提供，`TestSpecGenerator` 复用同一套；
-两处各写一套的后果是用例找不到元素，而现象看起来像"页面坏了"，排查方向一开始就会走偏。
-有一条测试专门断言 **Spec 引用的每个锚点在页面里都真实存在**。
+页面所有关键交互元素都带 `data-testid`（命名 `<模块>-<对象>-<动作>`，见 CLAUDE.md 4.4），
+供 AI 自动化测试定位。命名规则由 `VueGenerator` 单点提供。
 
 ## 包布局
 
@@ -98,7 +88,7 @@ java -jar target/codegen.jar <spec.yaml> [选项]
 | `flat` | `com.example.demo.controller` |
 
 `flat` **只影响后端 Java 包与文件落点**。前端目录、`schema-*.sql` / `menu-*.sql`、
-`test-specs/*.yaml`、权限点前缀、`@RequestMapping` 路径一律以模块名 / 表名为准，不变。
+权限点前缀、`@RequestMapping` 路径一律以模块名 / 表名为准，不变。
 
 取值优先级（命中即用）：
 
@@ -183,12 +173,11 @@ spec 里的 `query` 会生成**真正生效的**筛选：Controller 覆写框架
 
 ## 已验证
 
-单元测试 40/40，另有一轮**真实环境端到端验收**（`sample-app` + `frontend` + MySQL 5.7）：
+另有一轮**真实环境端到端验收**（`sample-app` + `frontend` + MySQL 5.7）：
 
 - 生成的 DDL 在 **MySQL 5.7 上实际执行通过**，中文注释完好、排序规则 `utf8mb4_general_ci`、时间列 `datetime`
 - 生成的四个 Java 文件在**真实框架依赖树下编译通过**，`sample-app` 全量 34/34
 - 生成的 `.vue` 与 `.ts` 通过项目的 `oxfmt` / `eslint` / `vue-tsc`，且**与格式化结果逐字节一致**
-- 生成的测试 Spec 是**合法 YAML**（用 SnakeYAML 解析产物断言，防住缩进与引号错误）
 - **浏览器实跑 9/9**：菜单出现在侧边栏 → 页面打开 → 新增 → 搜索命中且筛掉不匹配项 → 重置 → 删除
 - 数据库侧复核：`create_by` 由框架填充，删除是逻辑删除（`deleted=1`，物理行保留）
 

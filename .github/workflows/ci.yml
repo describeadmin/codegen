@@ -33,7 +33,8 @@ jobs:
             /tmp/gen/src/main/java/com/example/demo/project/entity/ProjectEntity.java \
             /tmp/gen/src/main/java/com/example/demo/project/controller/ProjectController.java \
             /tmp/gen/src/main/resources/db/schema-biz_project.sql \
-            /tmp/gen/test-specs/project.yaml ; do
+            /tmp/gen/src/main/resources/db/menu-biz_project.sql \
+            /tmp/gen/frontend/src/views/project/index.vue ; do
             [ -f "$f" ] || { echo "::error::缺少产物 $f"; exit 1; }
           done
           echo "  ✓ 全部产物已生成"

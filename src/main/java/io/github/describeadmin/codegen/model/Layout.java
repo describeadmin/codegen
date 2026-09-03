@@ -13,7 +13,7 @@ import java.util.Optional;
  *       如 {@code com.example.demo.controller}。不分模块层级，适合只有少量模块的小工程。</li>
  * </ul>
  *
- * <p>前端目录、{@code schema-*.sql} / {@code menu-*.sql}、{@code test-specs/*.yaml}、
+ * <p>前端目录、{@code schema-*.sql} / {@code menu-*.sql}、
  * {@code permPrefix()} 与 {@code @RequestMapping} 一律以模块名 / 表名为准，
  * <b>不受本选项影响</b>。
  */

@@ -2,19 +2,16 @@ package io.github.describeadmin.codegen;
 
 import io.github.describeadmin.codegen.generator.DdlGenerator;
 import io.github.describeadmin.codegen.generator.JavaGenerator;
-import io.github.describeadmin.codegen.generator.TestSpecGenerator;
 import io.github.describeadmin.codegen.model.FieldType;
 import io.github.describeadmin.codegen.model.ModuleSpec;
 import io.github.describeadmin.codegen.parser.SpecLoader;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.yaml.snakeyaml.Yaml;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -149,76 +146,6 @@ class GeneratorTest {
         assertThat(ddl).contains("KEY idx_biz_project_project_name (project_name)");
         assertThat(ddl).contains("KEY idx_biz_project_owner_dept_id (owner_dept_id)");
         assertThat(ddl).doesNotContain("idx_biz_project_budget");
-    }
-
-    // ------------------------------------------------------------------ 测试 Spec
-
-    @Test
-    @DisplayName("生成的测试 Spec 必须是合法 YAML —— 缩进与引号错误会在此暴露")
-    void testSpecIsValidYaml() {
-        String yaml = TestSpecGenerator.generate(spec);
-        // 多文档：用 loadAll。这条断言专门防住"看起来没问题但结构错乱"的产出
-        List<Object> docs = new ArrayList<>();
-        new Yaml().loadAll(yaml).forEach(docs::add);
-        assertThat(docs).as("应生成两个场景").hasSize(2);
-
-        for (Object doc : docs) {
-            assertThat(doc).isInstanceOf(Map.class);
-            @SuppressWarnings("unchecked")
-            Map<String, Object> m = (Map<String, Object>) doc;
-            assertThat(m).containsKeys("scenario", "steps", "assertions", "evidence");
-            assertThat((List<?>) m.get("steps")).as("步骤应被正确解析为列表").isNotEmpty();
-        }
-    }
-
-    @Test
-    @DisplayName("每个步骤都是结构完整的对象（缩进错会退化成字符串）")
-    void testSpecStepsAreObjects() {
-        @SuppressWarnings("unchecked")
-        Map<String, Object> first = (Map<String, Object>) new Yaml()
-                .loadAll(TestSpecGenerator.generate(spec)).iterator().next();
-
-        List<?> steps = (List<?>) first.get("steps");
-        assertThat(steps).allSatisfy(step -> assertThat(step).isInstanceOf(Map.class));
-
-        long fillCount = steps.stream()
-                .map(o -> (Map<?, ?>) o)
-                .filter(mm -> "fill".equals(mm.get("action")))
-                .count();
-        assertThat(fillCount).as("应为前几个非 TEXT 字段生成填充步骤").isEqualTo(3);
-    }
-
-    @Test
-    @DisplayName("断言同时覆盖 UI 与 DB，且 DB 断言比对具体值")
-    void testSpecHasBothUiAndDbAssertions() {
-        @SuppressWarnings("unchecked")
-        Map<String, Object> first = (Map<String, Object>) new Yaml()
-                .loadAll(TestSpecGenerator.generate(spec)).iterator().next();
-
-        List<?> assertions = (List<?>) first.get("assertions");
-        List<String> types = assertions.stream()
-                .map(o -> String.valueOf(((Map<?, ?>) o).get("type"))).toList();
-        assertThat(types).contains("ui", "db");
-
-        String query = assertions.stream()
-                .map(o -> (Map<?, ?>) o)
-                .filter(mm -> "db".equals(mm.get("type")))
-                .map(mm -> String.valueOf(mm.get("query")))
-                .findFirst().orElseThrow();
-        // SQL 字符串字面量必须是单引号，双引号会同时破坏 YAML 与 SQL
-        assertThat(query).contains("'测试项目名称-自动化'");
-        assertThat(query).doesNotContain("\"");
-    }
-
-    @Test
-    @DisplayName("data-testid 命名遵循 <模块>-<对象>-<动作>")
-    void testSpecUsesTestIds() {
-        String yaml = TestSpecGenerator.generate(spec);
-        assertThat(yaml)
-                .contains("data-testid=\"project-add-btn\"")
-                .contains("data-testid=\"project-submit-btn\"")
-                .contains("data-testid=\"project-table\"")
-                .contains("data-testid=\"project-project-name-input\"");
     }
 
     @Test

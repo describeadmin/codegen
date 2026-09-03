@@ -1,7 +1,6 @@
 package io.github.describeadmin.codegen;
 
 import io.github.describeadmin.codegen.generator.MenuSqlGenerator;
-import io.github.describeadmin.codegen.generator.TestSpecGenerator;
 import io.github.describeadmin.codegen.generator.VueGenerator;
 import io.github.describeadmin.codegen.model.ModuleSpec;
 import io.github.describeadmin.codegen.parser.SpecLoader;
@@ -40,22 +39,6 @@ class FrontendGeneratorTest {
     }
 
     // ------------------------------------------------------------- 防漂移
-
-    @Test
-    @DisplayName("测试 Spec 引用的每个 data-testid，页面里都真实存在")
-    void specSelectorsExistInPage() {
-        Set<String> pageIds = testIdsIn(VueGenerator.page(spec));
-        // ConfirmDialog 内部按 testid 前缀拼出确认/取消按钮，页面里看不到字面量
-        pageIds.add(spec.module() + "-confirm-btn");
-        pageIds.add(spec.module() + "-cancel-btn");
-
-        Set<String> specIds = testIdsIn(TestSpecGenerator.generate(spec));
-
-        assertThat(specIds).isNotEmpty();
-        assertThat(specIds)
-                .as("用例引用了页面里不存在的锚点，跑起来会定位失败，而现象看起来像页面坏了")
-                .isSubsetOf(pageIds);
-    }
 
     @Test
     @DisplayName("锚点命名遵循 <模块>-<对象>-<动作>")
