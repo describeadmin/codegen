@@ -185,3 +185,25 @@ spec 里的 `query` 会生成**真正生效的**筛选：Controller 覆写框架
 
 生成的 `.vue` / `.ts` 与项目 `oxfmt` / `eslint` / `vue-tsc` 的格式化结果**逐字节一致**
 （模板测试覆盖）。
+
+## 自己构建
+
+```bash
+mvn clean verify          # 任意 JDK ≥ 17；产出 target/codegen.jar（fat jar）
+java -jar target/codegen.jar examples/project.yaml --out /tmp/gen
+```
+
+CI（`.github/workflows/ci.yml`）三个 job：`build`（单元测试 + 冒烟）、
+`e2e-compile`（生成物在真实框架依赖树下 `mvn test-compile`）、release（打 `v*` tag 触发，
+产出随 GitHub Release 分发的 `codegen.jar` + `.sha256`）。
+
+`codegen` **不发布到 Maven Central**——它是命令行工具，不是依赖。版本号与框架保持一致
+（生成物要对哪个框架版本编译，就用哪个号的 codegen）。
+
+## 相关文档
+
+编码规范与设计方案都在 **`describeadmin/docs`** 仓——做本仓开发时把它与 `docs` 仓并列检出：
+
+- `docs/CLAUDE.md` —— 编码规范（`4.4` data-testid、`3.1` SQL 红线、`4.10` Lombok 口径等）
+- `docs/develop_plan.md` `3.3` / 第九章 —— 生成器定位与交付形态的论证
+- `docs/PROGRESS.md` —— 当前进度
