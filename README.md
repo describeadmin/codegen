@@ -171,14 +171,17 @@ spec 里的 `query` 会生成**真正生效的**筛选：Controller 覆写框架
 它与基类的 `list` 撞在同一个 GET 路径上，Spring 启动时直接报 Ambiguous mapping。
 框架为此留了 `buildListWrapper` 这一个覆写点。
 
-## 已验证
+## 已验证（CI）
 
-另有一轮**真实环境端到端验收**（`sample-app` + `frontend` + MySQL 5.7）：
+`examples/project.yaml` 是自带的端到端夹具，每次 CI 都跑三轮：
 
-- 生成的 DDL 在 **MySQL 5.7 上实际执行通过**，中文注释完好、排序规则 `utf8mb4_general_ci`、时间列 `datetime`
-- 生成的四个 Java 文件在**真实框架依赖树下编译通过**，`sample-app` 全量 34/34
-- 生成的 `.vue` 与 `.ts` 通过项目的 `oxfmt` / `eslint` / `vue-tsc`，且**与格式化结果逐字节一致**
-- **浏览器实跑 9/9**：菜单出现在侧边栏 → 页面打开 → 新增 → 搜索命中且筛掉不匹配项 → 重置 → 删除
-- 数据库侧复核：`create_by` 由框架填充，删除是逻辑删除（`deleted=1`，物理行保留）
+- **产物完整**：一条 spec 生成全部后端 + 前端文件，逐个断言存在
+- **DDL 在 MySQL 5.7 上实际执行通过**：中文注释按**具体值**核对（`项目名称`），
+  排序规则 `utf8mb4_general_ci`、时间列 `datetime`
+- **在真实框架依赖树下编译通过**：`e2e-compile` job 用 `describeadmin-archetype`
+  现生成一个业务工程，把 `project` 模块落进去，`mvn test-compile`——生成的
+  Entity / Mapper / Service / Controller 对真实的 `BaseEntity` / `BaseService` /
+  `BaseController` 编译通过
 
-`sample-app` 的 `project` 模块**没有一行手写代码**，全部由 `codegen-specs/project.yaml` 生成。
+生成的 `.vue` / `.ts` 与项目 `oxfmt` / `eslint` / `vue-tsc` 的格式化结果**逐字节一致**
+（模板测试覆盖）。

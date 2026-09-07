@@ -1,7 +1,10 @@
 # codegen 仓库 CI
 #
-# 本仓库不依赖 framework 的任何模块（生成器只产出源码文本），因此可以独立构建测试。
-# 「生成的代码能否在真实框架下编译」由 sample-app 仓库的 CI 覆盖。
+# build / smoke jobs：生成器自身只产出源码文本，构建与冒烟不依赖 framework 任何模块。
+# e2e-compile job：把生成物落进一个 archetype 生成的真实业务工程里，在真实框架依赖树下
+#   `mvn test-compile`——这一步替代了原先由独立仓 sample-app 的 CI 承担的
+#   「生成的代码能否在真实框架下编译」职责（见 docs/MIGRATION_NOTES.md D5）。
+#   它 checkout 的是 framework（生成物真正要编译对的那个依赖），不是外部夹具仓。
 
 name: CI
 
@@ -74,3 +77,51 @@ jobs:
       - name: 清理
         if: always()
         run: docker rm -f cg57 || true
+
+  e2e-compile:
+    name: 生成物在真实框架依赖树下编译
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: codegen
+      # 生成物真正要编译对的依赖就是 framework 本身——checkout 它、用它现构建的
+      # archetype 生成工程，版本天然对齐，不依赖 Central 上已发布的版本。
+      - uses: actions/checkout@v4
+        with:
+          repository: describeadmin/framework
+          path: framework
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: 安装 framework 与 archetype 到本地仓库
+        run: mvn -B -f framework/pom.xml install -DskipTests -Dgpg.skip=true
+
+      - name: 读取框架版本
+        id: fv
+        run: echo "v=$(mvn -B -q -f framework/pom.xml -DforceStdout -Dexpression=project.version help:evaluate)" >> "$GITHUB_OUTPUT"
+
+      - name: 构建 codegen.jar
+        run: mvn -B -f codegen/pom.xml -q clean package -DskipTests
+
+      - name: 用 archetype 生成业务工程，注入 project 模块
+        run: |
+          set -e
+          mkdir -p /tmp/e2e && cd /tmp/e2e
+          mvn -B org.apache.maven.plugins:maven-archetype-plugin:3.4.1:generate \
+            -DarchetypeGroupId=io.github.describeadmin \
+            -DarchetypeArtifactId=describeadmin-archetype \
+            -DarchetypeVersion=${{ steps.fv.outputs.v }} \
+            -DgroupId=com.example.demo -DartifactId=e2e-app -Dversion=1.0.0-SNAPSHOT \
+            -Dpackage=com.example.demo -DdbPort=3306 -DinteractiveMode=false
+          # examples/project.yaml 的 basePackage 就是 com.example.demo
+          java -jar "$GITHUB_WORKSPACE/codegen/target/codegen.jar" \
+            "$GITHUB_WORKSPACE/codegen/examples/project.yaml" \
+            --out /tmp/e2e/e2e-app --frontend-out /tmp/e2e/fe
+
+      - name: 在真实框架依赖树下编译
+        run: mvn -B -f /tmp/e2e/e2e-app/pom.xml test-compile
