@@ -156,6 +156,7 @@ public final class VueGenerator {
     public static String page(ModuleSpec s) {
         List<FieldSpec> formFields = s.fields();
         List<FieldSpec> queryFields = s.queryFields();
+        boolean hasSearch = !queryFields.isEmpty();
 
         String elImports = elementImports(s);
 
@@ -184,14 +185,24 @@ public final class VueGenerator {
                         + "\" min-width=\"140\" />")
                 .collect(Collectors.joining("\n"));
 
-        String searchBar = queryFields.isEmpty() ? "" : searchBar(s, queryFields);
+        // 检索栏用共享的 useSearchForm（折叠检索栏 + 搜索/清空按钮），见其源码注释。
+        // 只在有 query 字段时才引入这一套——没有搜索条件的模块不该平白多一份没用到的 import。
+        String searchTypeImport = hasSearch
+                ? "\nimport type { SearchFormSchema } from '#/composables/useSearchForm';"
+                : "";
+        String searchValueImport = hasSearch
+                ? "\nimport { useSearchForm } from '#/composables/useSearchForm';"
+                : "";
+        String searchScript = hasSearch ? searchFormScript(s, queryFields) : "";
+        String searchTemplate = hasSearch ? "\n    <SearchFormBar />\n" : "";
+
         String formItems = formFields.stream()
                 .map(f -> formItem(s, f))
                 .collect(Collectors.joining("\n"));
 
         return """
                 <script lang="ts" setup>
-                import type { %s } from '#/api/%s';
+                import type { %s } from '#/api/%s';%s
 
                 import { onMounted, reactive, ref } from 'vue';
 
@@ -205,7 +216,7 @@ public final class VueGenerator {
                   delete%sApi,
                   get%sListApi,
                   update%sApi,
-                } from '#/api/%s';
+                } from '#/api/%s';%s
 
                 defineOptions({ name: '%s' });
 
@@ -257,7 +268,7 @@ public final class VueGenerator {
                   }
                   return doSearch();
                 }
-
+                %s
                 function openCreate() {
                   editingId.value = null;
                   Object.assign(form, {
@@ -398,15 +409,16 @@ public final class VueGenerator {
                   </Page>
                 </template>
                 """.formatted(
-                s.entity(), s.module(),
+                s.entity(), s.module(), searchTypeImport,
                 elImports,
-                s.entity(), s.entity(), s.entity(), s.entity(), s.module(),
-                s.entity(),
+                s.entity(), s.entity(), s.entity(), s.entity(), s.module(), searchValueImport,
+                s.module(),
                 s.entity(),
                 searchModel.isEmpty() ? "  // spec 中没有 query 字段，无查询条件" : searchModel,
                 formModel,
                 rules.isEmpty() ? "  // spec 中所有字段均可空，无必填校验" : rules,
                 s.entity(),
+                searchScript,
                 formModelIndented,
                 s.entity(),
                 s.entity(), s.entity(),
@@ -414,7 +426,7 @@ public final class VueGenerator {
                 s.entity(),
                 s.comment(),
                 testId(s, "add-btn"),
-                searchBar,
+                searchTemplate,
                 testId(s, "table"),
                 columns,
                 testId(s, "edit-btn"),
@@ -437,63 +449,70 @@ public final class VueGenerator {
     }
 
     private static String elementImports(ModuleSpec s) {
+        // 检索栏字段走 useSearchForm 的 schema（'Input'/'Select'/… 字符串别名，由
+        // src/adapter/component 统一注册），不在页面里直接写 `<ElInput>` 标签，
+        // 所以这里不需要因为「有 query 字段」就强行 import ElInput。
         var names = new java.util.TreeSet<String>(List.of(
                 "ElButton", "ElDialog", "ElForm", "ElFormItem", "ElMessage",
                 "ElPagination", "ElTable", "ElTableColumn"));
         for (FieldSpec f : s.fields()) {
             names.add(controlOf(f.type()));
         }
-        if (!s.queryFields().isEmpty()) {
-            names.add("ElInput");
-        }
         return "import {\n"
                 + names.stream().map(n -> "  " + n + ",").collect(Collectors.joining("\n"))
                 + "\n} from 'element-plus';";
     }
 
-    private static String searchBar(ModuleSpec s, List<FieldSpec> queryFields) {
-        String inputs = queryFields.stream()
+    /**
+     * 检索栏的 schema 声明 + {@code useSearchForm} 调用，插进 {@code <script>} 里。
+     *
+     * <p>用共享组合式函数 {@code useSearchForm}（模板随 create-app 脚手到
+     * {@code src/composables/useSearchForm.ts}）而不是手写 `<ElForm inline>`——原来那种
+     * 平铺写法条件一多就挤成好几行、换行位置随浏览器宽度乱跳，`useSearchForm` 接的是
+     * VbenForm 原生的「自动折叠」能力：默认只显示放得下的第一行，其余条件收进「展开」，
+     * 展开后按网格整齐排列。字段类型仍然统一用文本框（与生成器一贯的「先给能用的最简形态，
+     * 不猜字段的下拉/日期语义」保持一致）——要换成真正的下拉/日期检索，在生成之后手改
+     * 这段 schema 即可，不是这里要解决的问题。
+     */
+    private static String searchFormScript(ModuleSpec s, List<FieldSpec> queryFields) {
+        String schemaItems = queryFields.stream()
                 .flatMap(f -> f.query() == FieldSpec.QueryMode.RANGE
                         ? java.util.stream.Stream.of(
-                                searchInput(s, f, f.name() + "Start", f.comment() + "（起）"),
-                                searchInput(s, f, f.name() + "End", f.comment() + "（止）"))
-                        : java.util.stream.Stream.of(searchInput(s, f, f.name(), f.comment())))
+                                searchSchemaItem(s, f.name() + "Start", f.comment() + "（起）"),
+                                searchSchemaItem(s, f.name() + "End", f.comment() + "（止）"))
+                        : java.util.stream.Stream.of(searchSchemaItem(s, f.name(), f.comment())))
                 .collect(Collectors.joining("\n"));
 
         return """
 
-                    <ElForm inline class="mb-2" data-testid="%s">
+                /** 检索栏：折叠展示，字段按需增删——见 `useSearchForm` 源码注释。 */
+                const searchSchema: SearchFormSchema[] = [
                 %s
-                      <ElFormItem>
-                        <ElButton
-                          type="primary"
-                          data-testid="%s"
-                          @click="doSearch"
-                        >
-                          查询
-                        </ElButton>
-                        <ElButton data-testid="%s" @click="resetSearch">
-                          重置
-                        </ElButton>
-                      </ElFormItem>
-                    </ElForm>
-                """.formatted(
-                testId(s, "search-form"), inputs,
-                testId(s, "search-btn"), testId(s, "reset-btn"));
+                ];
+
+                const { SearchFormBar } = useSearchForm({
+                  testid: '%s',
+                  schema: searchSchema,
+                  onSearch: async (values) => {
+                    Object.assign(search, values);
+                    await doSearch();
+                  },
+                  onReset: async () => {
+                    await resetSearch();
+                  },
+                });
+                """.formatted(schemaItems, s.module());
     }
 
-    private static String searchInput(ModuleSpec s, FieldSpec f, String model, String label) {
+    private static String searchSchemaItem(ModuleSpec s, String model, String label) {
         return """
-                      <ElFormItem label="%s">
-                        <ElInput
-                          v-model="search.%s"
-                          clearable
-                          data-testid="%s"
-                          placeholder="请输入"
-                          @keyup.enter="doSearch"
-                        />
-                      </ElFormItem>
-                """.formatted(label, model, s.module() + "-" + kebab(model) + "-search")
+                  {
+                    component: 'Input',
+                    fieldName: '%s',
+                    label: '%s',
+                    componentProps: () => ({ placeholder: '请输入', 'data-testid': '%s' }),
+                  },
+                """.formatted(model, label, s.module() + "-" + kebab(model) + "-search")
                 .stripTrailing();
     }
 

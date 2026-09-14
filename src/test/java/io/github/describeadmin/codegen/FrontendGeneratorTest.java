@@ -74,13 +74,22 @@ class FrontendGeneratorTest {
     }
 
     @Test
-    @DisplayName("有 query 字段就生成搜索栏，且带重置")
+    @DisplayName("有 query 字段就生成搜索栏（useSearchForm），且带重置")
     void searchBarGenerated() {
         String page = VueGenerator.page(spec);
-        assertThat(page).contains("data-testid=\"project-search-btn\"");
-        assertThat(page).contains("data-testid=\"project-reset-btn\"");
-        // range 字段生成起止两个输入
-        assertThat(page).contains("search.startDateStart").contains("search.startDateEnd");
+        // 检索栏走共享的 useSearchForm（折叠检索栏），不是手写 <ElForm inline>——
+        // search/reset 按钮的 data-testid 在 useSearchForm.ts 里按 testid 拼接，不会
+        // 作为字面量出现在生成的页面源码里，这里改为断言接线本身。
+        assertThat(page).contains("import { useSearchForm } from '#/composables/useSearchForm';");
+        assertThat(page).contains("import type { SearchFormSchema } from '#/composables/useSearchForm';");
+        assertThat(page).contains("testid: 'project',");
+        assertThat(page).contains("<SearchFormBar />");
+        assertThat(page).contains("onReset: async () => {\n    await resetSearch();\n  },");
+        // range 字段生成起止两个 schema 条目
+        assertThat(page).contains("fieldName: 'startDateStart'").contains("fieldName: 'startDateEnd'");
+        // schema 里的 data-testid 是 JS 对象字面量的一个属性，不是 HTML 属性，引号风格不同
+        assertThat(page).contains("'data-testid': 'project-start-date-start-search'");
+        assertThat(page).contains("'data-testid': 'project-start-date-end-search'");
     }
 
     @Test
