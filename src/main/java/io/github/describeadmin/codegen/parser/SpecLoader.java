@@ -78,6 +78,7 @@ public final class SpecLoader {
         String table = str(root, "table");
         String comment = str(root, "comment");
         String apiPrefix = str(root, "apiPrefix");
+        String labelField = str(root, "labelField");
 
         require(errors, basePackage, "basePackage", "业务方基础包名，如 com.example.demo");
         require(errors, module, "module", "模块名（小写），如 project");
@@ -109,6 +110,13 @@ public final class SpecLoader {
             errors.add("fields 为空：至少需要一个业务字段（审计字段由 BaseEntity 提供，不要在此声明）");
         }
 
+        // labelField 指向的字段必须真实存在——写错了不报错的话，生成物会少掉 /options
+        // 端点而没有任何提示，排查时只能靠对比另一个模块的生成结果才发现
+        if (labelField != null && fields.stream().noneMatch(f -> f.name().equals(labelField))) {
+            errors.add("labelField \"" + labelField + "\" 在 fields 中不存在；"
+                    + "它应是某个字段的 name，用作本模块被别的模块引用时下拉框显示的文本");
+        }
+
         LayoutChoice layout = resolveLayout(
                 layoutOverride, root.get("layout"), System.getenv("CODEGEN_LAYOUT"), errors);
 
@@ -120,6 +128,7 @@ public final class SpecLoader {
                 comment == null ? entity : comment,
                 apiPrefix == null ? "/api/" + module.replace('_', '-') : apiPrefix,
                 layout.layout(), layout.origin(),
+                labelField,
                 fields);
     }
 

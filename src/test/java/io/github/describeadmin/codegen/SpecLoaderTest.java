@@ -94,6 +94,22 @@ class SpecLoaderTest {
                 .hasMessageContaining("framework-system-starter");
     }
 
+    @Test
+    @DisplayName("labelField 省略时取第一个 string 字段")
+    void labelFieldDefaultsToFirstStringField() {
+        assertThat(parse(MINIMAL).optionLabelField().name()).isEqualTo("projectName");
+    }
+
+    @Test
+    @DisplayName("labelField 指向不存在的字段被拦下，而不是静默不生成 /options")
+    void unknownLabelFieldRejected() {
+        // 拼错了却不报错的话，生成物会少掉 /options 端点而没有任何提示——
+        // 只有对比另一个模块的生成结果才会发现，症状不指向"labelField 写错了"
+        assertThatThrownBy(() -> parse(MINIMAL + "labelField: noSuchField\n"))
+                .hasMessageContaining("labelField")
+                .hasMessageContaining("noSuchField");
+    }
+
     // ------------------------------------------------------------------
     // 以下几条验证「SQL 红线固化在类型系统里」：生成器根本产不出违规 SQL
     // ------------------------------------------------------------------

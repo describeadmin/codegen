@@ -139,7 +139,7 @@ public final class VueGenerator {
                 export async function delete%sApi(id: string) {
                   return requestClient.delete(`%s/${id}`);
                 }
-                """.formatted(
+                %s""".formatted(
                 s.comment(),
                 s.entity(),
                 s.entity(), s.entity(), tsType,
@@ -148,7 +148,49 @@ public final class VueGenerator {
                 s.entity(), s.entity(), s.entity(), path,
                 s.entity(), s.entity(), s.entity(), path,
                 s.entity(), s.entity(), s.entity(), path,
-                s.entity(), path);
+                s.entity(), path,
+                optionsApi(s, path));
+    }
+
+    /**
+     * 别的模块引用本模块时用的选项接口。
+     *
+     * <p>有了它，给表单加「选一个 XX」这种下拉框就有范式可抄；没有它，写页面的人只能去调
+     * {@code getXxxListApi({ current: 1, size: 200 })}——那是把分页接口当全量接口使，
+     * 数据一多就静默丢，且调大 size 也没用（后端 {@code PageQuery.MAX_SIZE} 是 500）。
+     * 约定见 CLAUDE.md 4.11。
+     *
+     * <p>实体没有可显示的名称字段时返回空串，与 {@code JavaGenerator} 不生成
+     * {@code /options} 端点保持一致——两边的判据都是 {@code ModuleSpec.optionLabelField()}，
+     * 只改一边会产出一个调用不存在端点的前端函数。
+     */
+    private static String optionsApi(ModuleSpec s, String path) {
+        if (s.optionLabelField() == null) {
+            return "";
+        }
+        return """
+
+                /** 下拉框选项的通用形状，与后端 OptionItem 一一对应。 */
+                export interface OptionItem {
+                  children?: OptionItem[];
+                  disabled?: boolean;
+                  label: string;
+                  value: string;
+                }
+
+                /**
+                 * 下拉框选项。**不分页**——下拉框少一项就是选不到。
+                 *
+                 * 别用 get%sListApi({ current: 1, size: 200 }) 代替它：那是把分页接口当
+                 * 全量接口使，超出就静默丢数据，且调大 size 也没用（后端上限 500）。
+                 * 数据量超过上限时本接口明确报错，传 keyword 做前缀收窄即可。
+                 */
+                export async function get%sOptionsApi(keyword?: string) {
+                  return requestClient.get<OptionItem[]>('%s/options', {
+                    params: keyword ? { keyword } : undefined,
+                  });
+                }
+                """.formatted(s.entity(), s.entity(), path);
     }
 
     // ------------------------------------------------------------------ 页面
@@ -552,6 +594,11 @@ public final class VueGenerator {
             // long 一律走文本框：后端把 Long 序列化成字符串（避免雪花 ID 被 JS 舍入），
             // 数字微调器的 v-model 是 number，编辑现有记录时回填的字符串塞进去就是混合类型。
             // 何况本框架里的 long 基本都是 ID 引用（ownerDeptId 这类），微调器本就不合适。
+            //
+            // 生成器不猜哪个 long 引用了哪张表（猜错产出的是一个查错模块的下拉框），
+            // 所以这里仍给最简形态。要把它换成真正的选择器，用被引用模块生成的
+            // getXxxOptionsApi()（或系统模块的 getDeptOptionsApi / getRoleOptionsApi），
+            // 别去调对方的分页列表接口硬编码 size=200 —— 理由见 CLAUDE.md 4.11。
             case LONG -> """
                               <ElInput
                                 v-model="%s"

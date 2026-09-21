@@ -15,6 +15,12 @@ comment: 项目
 # apiPrefix 可省略，默认为 /api/<module>
 apiPrefix: /api/project
 
+# labelField 可省略：本模块被别的模块引用时，下拉框里显示哪个字段。
+#   省略 = 取第一个 string 字段（这里就是 projectName）。
+#   一个 string 字段都没有时不生成 /options 端点与 getXxxOptionsApi —— 一个只显示
+#   雪花 ID 的下拉框没有价值，反而会让人以为"选项功能坏了"。
+# labelField: projectName
+
 fields:
   - name: projectName
     type: string

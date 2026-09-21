@@ -138,6 +138,8 @@ public final class JavaGenerator {
         // 统一收集后排序，而不是拼几段固定文本。查询参数的取值/类型转换
         // （text / asInt / asDate …）由 BaseController 提供，生成物只调用不声明，
         // 因此这里不再需要 BizException / ResultCode，也不需要按字段类型追加 import。
+        FieldSpec labelField = s.optionLabelField();
+
         Set<String> imports = new java.util.TreeSet<>(List.of(
                 "io.github.describeadmin.mybatis.api.BaseController",
                 s.packageOf("entity") + "." + s.entityClass(),
@@ -151,6 +153,16 @@ public final class JavaGenerator {
                     "com.baomidou.mybatisplus.core.conditions.Wrapper",
                     "com.baomidou.mybatisplus.core.conditions.query.QueryWrapper",
                     "java.util.Map"));
+        }
+        if (labelField != null) {
+            imports.addAll(List.of(
+                    "com.baomidou.mybatisplus.core.conditions.query.QueryWrapper",
+                    "io.github.describeadmin.common.api.OptionItem",
+                    "io.github.describeadmin.common.api.Result",
+                    "java.util.List",
+                    "org.springframework.util.StringUtils",
+                    "org.springframework.web.bind.annotation.GetMapping",
+                    "org.springframework.web.bind.annotation.RequestParam"));
         }
 
         return """
@@ -195,7 +207,7 @@ public final class JavaGenerator {
                     public String permPrefix() {
                         return "%s";
                     }
-                %s}
+                %s%s}
                 """.formatted(
                 s.packageOf("controller"),
                 imports.stream().map(i -> "import " + i + ";").collect(Collectors.joining("\n")),
@@ -205,7 +217,58 @@ public final class JavaGenerator {
                 s.serviceClass(), s.entityVar() + "Service",
                 s.serviceClass(), s.entityVar() + "Service",
                 s.module(),
+                labelField == null ? "" : optionsMethod(s, labelField),
                 queryFields.isEmpty() ? "" : listMethod(s, queryFields));
+    }
+
+    /**
+     * 生成 {@code GET <apiPrefix>/options}：本模块被别的模块引用时的选项数据源。
+     *
+     * <p><b>为什么生成这个端点</b>：业务表单里迟早要出现「选一个项目」「选一个客户」这类
+     * 引用别的模块的下拉框。没有它，写页面的人只能去调对方的分页列表接口并硬编码一个
+     * {@code size=200}——那是把分页接口当全量接口使，数据一多就静默丢，且调大参数也没用
+     * （{@code PageQuery.MAX_SIZE} 是 500）。约定与分档见 CLAUDE.md 4.11。
+     *
+     * <p><b>业务实体落「受控引用」档，复用本模块的 {@code :list} 权限点</b>，
+     * 与框架里 {@code /api/system/role/options} 那种「仅要求登录」的组织元数据不同：
+     * <ul>
+     *   <li>业务数据可能含敏感信息，枚举全部项目名称本身就是信息泄露；</li>
+     *   <li>走 {@code getService()} 的正常查询链路，{@code DeptDataPermissionHandler}
+     *       的行级过滤照常生效——换句话说「本部门」档的角色在下拉里也只看得到本部门的数据。
+     *       这正是想要的，所以这里<b>不能</b>绕过 Service 直接查 Mapper。</li>
+     * </ul>
+     *
+     * <p>上限与「超限抛错不截断」由 {@code BaseService.listOptionSource} 统一承担，
+     * 生成物只提供 wrapper，保持"薄"。
+     */
+    private static String optionsMethod(ModuleSpec s, FieldSpec label) {
+        return ("""
+
+                    /**
+                     * %s选项，供别的模块的下拉框使用。
+                     *
+                     * <p>不分页：下拉框少一项就是选不到。超过 {@code OptionItem.MAX_SIZE}
+                     * 时抛错而非截断，请传 {@code keyword} 收窄。
+                     *
+                     * <p>权限点与列表一致（{@code %s:list}），数据权限照常生效。
+                     */
+                    @GetMapping("/options")
+                    public Result<List<OptionItem>> options(@RequestParam(required = false) String keyword) {
+                        requirePermission("list");
+                        QueryWrapper<%s> wrapper = new QueryWrapper<%s>()
+                                .select("id", "%s")
+                                .likeRight(StringUtils.hasText(keyword), "%s", keyword)
+                                .orderByDesc("id");
+                        return Result.ok(%s.listOptionSource(wrapper, "%s").stream()
+                                .map(e -> OptionItem.of(e.getId(), e.get%s()))
+                                .toList());
+                    }
+                """).formatted(
+                s.comment(), s.module(),
+                s.entityClass(), s.entityClass(),
+                label.column(), label.column(),
+                s.entityVar() + "Service", s.comment(),
+                Character.toUpperCase(label.name().charAt(0)) + label.name().substring(1));
     }
 
     /**

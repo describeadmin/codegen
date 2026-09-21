@@ -1,5 +1,6 @@
 package io.github.describeadmin.codegen;
 
+import io.github.describeadmin.codegen.generator.JavaGenerator;
 import io.github.describeadmin.codegen.generator.MenuSqlGenerator;
 import io.github.describeadmin.codegen.generator.VueGenerator;
 import io.github.describeadmin.codegen.model.ModuleSpec;
@@ -118,6 +119,43 @@ class FrontendGeneratorTest {
         assertThat(api).contains("requestClient.get<ProjectPage>('/project'");
         assertThat(api).contains("requestClient.post<Project>('/project'");
         assertThat(api).contains("/project/${id}");
+    }
+
+    @Test
+    @DisplayName("生成 getXxxOptionsApi —— 别的模块引用本模块时的下拉框数据源")
+    void apiGeneratesOptionsFunction() {
+        String api = VueGenerator.api(spec);
+
+        assertThat(api).contains("export async function getProjectOptionsApi(keyword?: string)");
+        assertThat(api).contains("requestClient.get<OptionItem[]>('/project/options'");
+        // 形状要与后端 OptionItem 一一对应，尤其 value 是 string（雪花 ID 不能是 number）
+        assertThat(api).contains("export interface OptionItem {").contains("value: string;");
+        // keyword 不传就不要往 query string 里塞一个 undefined
+        assertThat(api).contains("params: keyword ? { keyword } : undefined");
+    }
+
+    /**
+     * 两个生成器必须对「有没有可显示的名称」给出同一个答案，判据都是
+     * {@code ModuleSpec.optionLabelField()}。只改一边会产出一个调用不存在端点的前端函数，
+     * 而症状是运行时 404，不指向"生成器两边不一致"。
+     */
+    @Test
+    @DisplayName("实体没有可显示名称时，前后端都不产出 options")
+    void apiSkipsOptionsWhenNoLabelCandidate() {
+        ModuleSpec noLabel = SpecLoaderTestAccess.parse(new org.yaml.snakeyaml.Yaml().load("""
+                basePackage: com.example.demo
+                module: reading
+                entity: Reading
+                table: biz_reading
+                comment: 读数
+                fields:
+                  - name: deviceId
+                    type: long
+                    comment: 设备ID
+                """));
+
+        assertThat(VueGenerator.api(noLabel)).doesNotContain("OptionItem");
+        assertThat(JavaGenerator.controller(noLabel)).doesNotContain("OptionItem");
     }
 
     @Test

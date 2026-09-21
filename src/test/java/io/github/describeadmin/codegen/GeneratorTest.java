@@ -173,15 +173,99 @@ class GeneratorTest {
         }
     }
 
+    /**
+     * 生成物必须自带 {@code /options}，否则业务方给表单加「选一个项目」这种下拉框时
+     * 没有范式可抄，只能去调分页列表接口硬编码 {@code size=200}——那正是 CLAUDE.md 4.11
+     * 要消掉的写法。
+     */
+    @Test
+    @DisplayName("Controller 生成 /options 端点，复用本模块 list 权限点且不绕过数据权限")
+    void controllerGeneratesOptionsEndpoint() {
+        String src = JavaGenerator.controller(spec);
+
+        assertThat(src).contains("@GetMapping(\"/options\")");
+        assertThat(src).contains(
+                "public Result<List<OptionItem>> options(@RequestParam(required = false) String keyword)");
+
+        // 业务实体是「受控引用」档：复用本模块的 :list，而不是像组织元数据那样只要求登录
+        assertThat(src).contains("requirePermission(\"list\")");
+
+        // 必须走 Service —— 绕过它直接查 Mapper 会跳过 DeptDataPermissionHandler 的行级过滤，
+        // 于是「本部门」档的角色能在下拉里看到全公司的数据，而列表页明明是过滤过的
+        assertThat(src).contains("projectService.listOptionSource(wrapper, \"项目\")");
+
+        // 显示名默认取第一个 string 字段：列名进 SQL、驼峰进 getter，搞反会在运行时才炸
+        assertThat(src).contains(".select(\"id\", \"project_name\")");
+        assertThat(src).contains("OptionItem.of(e.getId(), e.getProjectName())");
+
+        assertThat(src).contains("import io.github.describeadmin.common.api.OptionItem;");
+    }
+
+    @Test
+    @DisplayName("labelField 覆盖默认的「第一个 string 字段」")
+    void optionsHonoursExplicitLabelField() {
+        String src = JavaGenerator.controller(SpecLoaderTestAccess.parse(new org.yaml.snakeyaml.Yaml().load("""
+                basePackage: com.example.demo
+                module: project
+                entity: Project
+                table: biz_project
+                comment: 项目
+                labelField: projectCode
+                fields:
+                  - name: projectName
+                    type: string
+                    length: 128
+                    comment: 项目名称
+                  - name: projectCode
+                    type: string
+                    length: 64
+                    comment: 项目编号
+                """)));
+
+        assertThat(src).contains(".select(\"id\", \"project_code\")");
+        assertThat(src).contains("OptionItem.of(e.getId(), e.getProjectCode())");
+        assertThat(src).doesNotContain("project_name");
+    }
+
+    /**
+     * 一个 string 字段都没有时不生成 {@code /options}：下拉框里只显示一串雪花 id
+     * 对使用者毫无意义，还会让人以为"选项功能坏了"。
+     */
+    @Test
+    @DisplayName("实体没有可显示的名称时，不生成 /options")
+    void skipsOptionsWhenNoLabelCandidate() {
+        String src = JavaGenerator.controller(SpecLoaderTestAccess.parse(new org.yaml.snakeyaml.Yaml().load("""
+                basePackage: com.example.demo
+                module: reading
+                entity: Reading
+                table: biz_reading
+                comment: 读数
+                fields:
+                  - name: deviceId
+                    type: long
+                    comment: 设备ID
+                  - name: value
+                    type: decimal
+                    precision: 18
+                    scale: 2
+                    comment: 读数
+                """)));
+
+        assertThat(src).doesNotContain("/options");
+        assertThat(src).doesNotContain("OptionItem");
+    }
+
     @Test
     @DisplayName("Controller 覆写 buildListWrapper 并真正构造条件，而不是只在注释里承诺")
     void controllerActuallyFilters() {
         String src = JavaGenerator.controller(spec);
 
         // 必须覆写基类的钩子，而不是自己声明一个带 @GetMapping 的重载 ——
-        // 后者与基类的 list 撞在同一个 GET 路径上，Spring 启动即报 Ambiguous mapping
+        // 后者与基类的 list 撞在同一个 GET 路径上，Spring 启动即报 Ambiguous mapping。
+        // 断言的是「没有**裸** @GetMapping」（那种才会落在基类 list 的根路径上）；
+        // 带子路径的 @GetMapping("/options") 是另一个端点，不冲突。
         assertThat(src).contains("protected Wrapper<ProjectEntity> buildListWrapper(");
-        assertThat(src).doesNotContain("@GetMapping");
+        assertThat(src).doesNotContainPattern("@GetMapping[^(]");
 
         assertThat(src).contains("QueryWrapper<ProjectEntity> wrapper = new QueryWrapper<>()");
         assertThat(src).contains("wrapper.likeRight(");

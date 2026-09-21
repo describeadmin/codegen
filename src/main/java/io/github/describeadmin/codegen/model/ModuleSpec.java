@@ -23,6 +23,8 @@ import java.util.List;
  * @param apiPrefix   REST 路径前缀，默认 {@code /api/<module>}
  * @param layout      后端 Java 包布局（{@code nested} / {@code flat}），只影响 {@link #packageOf}
  * @param layoutOrigin 布局取值的来源，仅用于生成时的提示行（如「CODEGEN_LAYOUT 环境变量」）
+ * @param labelField  被别的模块引用时用作显示名的字段名；{@code null} 表示按
+ *                    {@link #optionLabelField()} 的规则自动挑一个
  * @param fields      业务字段；审计字段由 BaseEntity 承担，不在此声明
  */
 public record ModuleSpec(
@@ -34,6 +36,7 @@ public record ModuleSpec(
         String apiPrefix,
         Layout layout,
         String layoutOrigin,
+        String labelField,
         List<FieldSpec> fields) {
 
     public ModuleSpec {
@@ -75,5 +78,23 @@ public record ModuleSpec(
     /** 参与列表查询的字段。 */
     public List<FieldSpec> queryFields() {
         return fields.stream().filter(f -> f.query() != FieldSpec.QueryMode.NONE).toList();
+    }
+
+    /**
+     * 本模块被别的模块引用时，下拉框里显示哪个字段。
+     *
+     * <p>spec 里显式写了 {@code labelField} 就用它；否则取<b>第一个 STRING 字段</b>——
+     * 实体的第一个文本字段几乎总是它的名称（{@code projectName}、{@code title}），
+     * 这个猜测对就省事、错了就在 spec 里写一行覆盖，代价对称。
+     *
+     * <p>返回 {@code null} 表示这个实体<b>没有可显示的名称</b>（一个 STRING 字段都没有），
+     * 此时不生成 {@code /options} 端点：生成一个只显示雪花 id 的下拉框毫无价值，
+     * 反而会让人以为"选项功能坏了"。
+     */
+    public FieldSpec optionLabelField() {
+        if (labelField != null) {
+            return fields.stream().filter(f -> f.name().equals(labelField)).findFirst().orElse(null);
+        }
+        return fields.stream().filter(f -> f.type() == FieldType.STRING).findFirst().orElse(null);
     }
 }
