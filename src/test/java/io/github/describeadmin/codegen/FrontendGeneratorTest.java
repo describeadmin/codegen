@@ -67,6 +67,24 @@ class FrontendGeneratorTest {
     }
 
     @Test
+    @DisplayName("增删改按钮按权限点显隐，前缀与 menu-*.sql 同源")
+    void buttonsGuardedByPermission() {
+        String page = VueGenerator.page(spec);
+        // 前缀必须是 s.module()，与 MenuSqlGenerator 登记 <module>:add/edit/remove 同源
+        assertThat(page).contains("import { usePermission } from '@describeadmin/access';");
+        assertThat(page).contains("const { can, canAny } = usePermission('" + spec.module() + "');");
+        // 三个按钮各自的 v-if
+        assertThat(page).contains("v-if=\"can('add')\"");
+        assertThat(page).contains("v-if=\"can('edit')\"");
+        assertThat(page).contains("v-if=\"can('remove')\"");
+        // 一个行操作权限都没有时整列不渲染，不留固定宽度的空白列
+        assertThat(page).contains("v-if=\"canAny('edit', 'remove')\"");
+        // 三个 v-if("can(...)") + 一个 canAny，不多不少——弹窗的取消/确定、搜索栏的
+        // 查询/重置一律不加：能打开弹窗就说明已经通过了入口按钮的判定
+        assertThat(page.split("v-if=\"can\\(", -1).length - 1).isEqualTo(3);
+    }
+
+    @Test
     @DisplayName("TEXT 字段不进列表列 —— 长文本会把表格挤垮")
     void textFieldNotInTable() {
         String page = VueGenerator.page(spec);

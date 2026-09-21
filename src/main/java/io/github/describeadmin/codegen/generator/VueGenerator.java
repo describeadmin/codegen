@@ -248,6 +248,7 @@ public final class VueGenerator {
 
                 import { onMounted, reactive, ref } from 'vue';
 
+                import { usePermission } from '@describeadmin/access';
                 import { ConfirmDialog } from '@describeadmin/ele-ui';
                 import { Page } from '@describeadmin/ui';
 
@@ -261,6 +262,13 @@ public final class VueGenerator {
                 } from '#/api/%s';%s
 
                 defineOptions({ name: '%s' });
+
+                /**
+                 * 按钮级权限。前缀与 menu-*.sql 登记的 perm_code、以及 Controller 的
+                 * permPrefix() 覆写同源，三处必须一致——对不上的表现是按钮一个都不显示，
+                 * 且没有任何错误信息指向前缀。
+                 */
+                const { can, canAny } = usePermission('%s');
 
                 const loading = ref(false);
                 const rows = ref<%s[]>([]);
@@ -367,6 +375,7 @@ public final class VueGenerator {
                   <Page description="由 codegen 生成，可直接修改" title="%s">
                     <template #extra>
                       <ElButton
+                        v-if="can('add')"
                         type="primary"
                         data-testid="%s"
                         @click="openCreate"
@@ -382,9 +391,15 @@ public final class VueGenerator {
                       data-testid="%s"
                     >
                 %s
-                      <ElTableColumn label="操作" width="160" fixed="right">
+                      <ElTableColumn
+                        v-if="canAny('edit', 'remove')"
+                        label="操作"
+                        width="160"
+                        fixed="right"
+                      >
                         <template #default="{ row }">
                           <ElButton
+                            v-if="can('edit')"
                             link
                             type="primary"
                             data-testid="%s"
@@ -393,6 +408,7 @@ public final class VueGenerator {
                             编辑
                           </ElButton>
                           <ElButton
+                            v-if="can('remove')"
                             link
                             type="danger"
                             data-testid="%s"
@@ -454,6 +470,7 @@ public final class VueGenerator {
                 s.entity(), s.module(), searchTypeImport,
                 elImports,
                 s.entity(), s.entity(), s.entity(), s.entity(), s.module(), searchValueImport,
+                s.module(),
                 s.module(),
                 s.entity(),
                 searchModel.isEmpty() ? "  // spec 中没有 query 字段，无查询条件" : searchModel,
