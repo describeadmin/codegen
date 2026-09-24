@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
  * 这是 develop_plan.md 目标 #5（可持续升级）在生成器侧的落点。
  *
  * <p>访问器与依赖注入构造器交给 Lombok（Entity 上的 {@code @Getter}/{@code @Setter}、
- * Controller 上的 {@code @RequiredArgsConstructor}），与"薄代码"同向——生成物更小，
+ * Controller 与 Service 上的 {@code @RequiredArgsConstructor}），与"薄代码"同向——生成物更小，
  * 没有逐字段的机械样板。Lombok 依赖由业务工程自带（archetype 已预置），
  * 框架自身源码不使用它。
  */
@@ -105,6 +105,7 @@ public final class JavaGenerator {
                 import io.github.describeadmin.mybatis.api.BaseService;
                 import %s.%s;
                 import %s.%s;
+                import lombok.RequiredArgsConstructor;
                 import org.springframework.stereotype.Service;
 
                 /**
@@ -113,8 +114,14 @@ public final class JavaGenerator {
                  * <p>由 codegen 生成。CRUD 与分页由 {@code BaseService} 提供，
                  * 业务特有逻辑写在这里；生成器不会覆盖本文件中手工添加的方法
                  * （重新生成时本文件默认被跳过，需覆盖请显式指定 --force）。
+                 *
+                 * <p>业务自身的依赖声明成 {@code private final} 字段即可，注入构造器由
+                 * Lombok 的 {@code @RequiredArgsConstructor} 生成，不手写——与本类的
+                 * Controller 一致。<b>本类对应的 Mapper 不在此列</b>：基类已经持有它
+                 * （{@code getBaseMapper()}），再声明一个字段只是多一份等价引用。
                  */
                 @Service
+                @RequiredArgsConstructor
                 public class %s extends BaseService<%s, %s> {
                 }
                 """.formatted(

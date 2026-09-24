@@ -65,6 +65,21 @@ class GeneratorTest {
     }
 
     @Test
+    @DisplayName("Service 也用 @RequiredArgsConstructor，业务加依赖时不手写构造器")
+    void serviceUsesLombokConstructor() {
+        String src = JavaGenerator.service(spec);
+        assertThat(src).contains("import lombok.RequiredArgsConstructor;");
+        assertThat(src).contains("@Service");
+        assertThat(src).contains("@RequiredArgsConstructor");
+        assertThat(src).contains("extends BaseService<ProjectMapper, ProjectEntity>");
+        // 依赖注入构造器交给 Lombok，不再手写。空 Service 上该注解给出的是一个无参构造器，
+        // 与不写注解时的隐式默认构造器等价，因此本改动对现有生成物是中性的
+        assertThat(src).doesNotContain("public ProjectService(");
+        // Mapper 由基类持有，生成物里不该出现自己的 mapper 字段
+        assertThat(src).doesNotContain("ProjectMapper projectMapper;");
+    }
+
+    @Test
     @DisplayName("Controller 继承基类并绑定正确的泛型与路径")
     void controller() {
         String src = JavaGenerator.controller(spec);

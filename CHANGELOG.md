@@ -11,6 +11,26 @@
 > framework 停在 0.2.1。skill 按框架版本仍会取 codegen 0.2.1，要用 0.2.2 得显式设
 > `CODEGEN_VERSION`。
 
+## Unreleased
+
+### Breaking Changes
+
+- 无
+
+### New Features
+
+- **生成的 Service 与 Controller 一样带 `@RequiredArgsConstructor`**（模板此前只有
+  `@Service`）。生成物本身没有依赖——Mapper 由 `BaseService` 基类持有——该注解是给业务方
+  后续注入铺的通道：新增依赖声明成 `private final` 字段即可，构造器由 Lombok 生成。
+  空 Service 上 Lombok 给出的是一个无参构造器，与不写注解时的隐式默认构造器等价，
+  因此对既有生成物的语义没有影响，也不引入新的依赖要求（lombok 自 0.2.1 起已要求）。
+  注意：Service 文件默认跳过不覆盖，模板的这一变化不会自动回溯到已生成的模块，
+  需要新式样要么新模块生成、要么 `--force` 覆盖（会丢掉手工添加的方法）。
+
+### Bug Fixes
+
+- 无
+
 ## 0.2.2 (2026-09-03)
 
 **本次仅 codegen 发版，framework / frontend 保持 0.2.1。** 开头那条「版本号与 framework
