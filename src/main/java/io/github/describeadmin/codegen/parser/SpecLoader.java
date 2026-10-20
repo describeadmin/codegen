@@ -3,6 +3,7 @@ package io.github.describeadmin.codegen.parser;
 import io.github.describeadmin.codegen.model.FieldSpec;
 import io.github.describeadmin.codegen.model.FieldType;
 import io.github.describeadmin.codegen.model.Layout;
+import io.github.describeadmin.codegen.model.MenuParent;
 import io.github.describeadmin.codegen.model.ModuleSpec;
 import org.yaml.snakeyaml.Yaml;
 
@@ -37,6 +38,8 @@ public final class SpecLoader {
     private static final Pattern UPPER_CAMEL = Pattern.compile("^[A-Z][A-Za-z0-9]*$");
     private static final Pattern SNAKE = Pattern.compile("^[a-z][a-z0-9_]*$");
     private static final Pattern PACKAGE = Pattern.compile("^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$");
+    /** 一级目录的路由路径：只有一段，如 /roster。 */
+    private static final Pattern TOP_PATH = Pattern.compile("^/[A-Za-z0-9_-]+$");
 
     /** MySQL 5.7 单列索引键长度上限 767 字节；utf8mb4 每字符 4 字节 → 191 字符。 */
     private static final int MAX_INDEXED_VARCHAR = 191;
@@ -117,6 +120,8 @@ public final class SpecLoader {
                     + "它应是某个字段的 name，用作本模块被别的模块引用时下拉框显示的文本");
         }
 
+        MenuParent menuParent = parseMenu(root.get("menu"), errors);
+
         LayoutChoice layout = resolveLayout(
                 layoutOverride, root.get("layout"), System.getenv("CODEGEN_LAYOUT"), errors);
 
@@ -129,6 +134,7 @@ public final class SpecLoader {
                 apiPrefix == null ? "/api/" + module.replace('_', '-') : apiPrefix,
                 layout.layout(), layout.origin(),
                 labelField,
+                menuParent,
                 fields);
     }
 
@@ -167,6 +173,64 @@ public final class SpecLoader {
                     + "）非法，只能是 nested 或 flat");
             return Layout.NESTED; // 占位；errors 非空时不会被真正使用
         });
+    }
+
+    /**
+     * 解析 {@code menu} 块。目前只有 {@code menu.parent}：模块菜单挂在哪个一级目录下。
+     *
+     * <p>未知键一律报错而不是忽略——这里写错（比如 {@code parnet}）不报错的话，菜单会静默挂回
+     * 默认的「业务管理」目录，生成物看起来一切正常，要到侧边栏里才发现位置不对。
+     */
+    @SuppressWarnings("unchecked")
+    static MenuParent parseMenu(Object raw, List<String> errors) {
+        if (raw == null) {
+            return MenuParent.DEFAULT;
+        }
+        if (!(raw instanceof Map)) {
+            errors.add("menu 必须是对象，如 menu: { parent: { path: /roster, name: 花名册 } }");
+            return MenuParent.DEFAULT;
+        }
+        Map<String, Object> menu = (Map<String, Object>) raw;
+        rejectUnknownKeys(menu, Set.of("parent"), "menu", errors);
+        Object rawParent = menu.get("parent");
+        if (rawParent == null) {
+            return MenuParent.DEFAULT;
+        }
+        if (!(rawParent instanceof Map)) {
+            errors.add("menu.parent 必须是对象，包含 path / name，可选 icon / sort");
+            return MenuParent.DEFAULT;
+        }
+        Map<String, Object> p = (Map<String, Object>) rawParent;
+        rejectUnknownKeys(p, Set.of("path", "name", "icon", "sort"), "menu.parent", errors);
+
+        String path = str(p, "path");
+        String name = str(p, "name");
+        String icon = str(p, "icon");
+        require(errors, path, "menu.parent.path", "一级目录的路由路径，如 /roster");
+        require(errors, name, "menu.parent.name", "目录名称，如 花名册；目录不存在时用它新建");
+        if (path != null && !TOP_PATH.matcher(path).matches()) {
+            errors.add("menu.parent.path \"" + path + "\" 应是以 / 开头的一级路径，如 /roster"
+                    + "（只支持挂在一级目录下）");
+        }
+        int sort = MenuParent.DEFAULT_SORT;
+        Object rawSort = p.get("sort");
+        if (rawSort != null) {
+            try {
+                sort = Integer.parseInt(String.valueOf(rawSort).trim());
+            } catch (NumberFormatException e) {
+                errors.add("menu.parent.sort \"" + rawSort + "\" 应为整数");
+            }
+        }
+        return new MenuParent(path, name, icon == null ? MenuParent.DEFAULT_ICON : icon, sort);
+    }
+
+    private static void rejectUnknownKeys(Map<String, Object> m, Set<String> allowed, String at,
+                                          List<String> errors) {
+        for (String key : m.keySet()) {
+            if (!allowed.contains(key)) {
+                errors.add(at + " 下有未知的键 \"" + key + "\"，可选 " + allowed.stream().sorted().toList());
+            }
+        }
     }
 
     @SuppressWarnings("unchecked")

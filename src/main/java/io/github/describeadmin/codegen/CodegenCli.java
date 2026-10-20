@@ -1,8 +1,7 @@
 package io.github.describeadmin.codegen;
 
-import io.github.describeadmin.codegen.generator.DdlGenerator;
+import io.github.describeadmin.codegen.generator.ChangelogGenerator;
 import io.github.describeadmin.codegen.generator.JavaGenerator;
-import io.github.describeadmin.codegen.generator.MenuSqlGenerator;
 import io.github.describeadmin.codegen.generator.VueGenerator;
 import io.github.describeadmin.codegen.model.Layout;
 import io.github.describeadmin.codegen.model.ModuleSpec;
@@ -14,10 +13,12 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 /**
  * 命令行入口。
@@ -102,6 +103,7 @@ public final class CodegenCli {
 
         List<String> written = new ArrayList<>();
         List<String> skipped = new ArrayList<>();
+        boolean changelogOverwritten = false;
 
         for (Map.Entry<Path, String> e : files.entrySet()) {
             Path target = e.getKey();
@@ -112,6 +114,9 @@ public final class CodegenCli {
                 out.println("  跳过  " + rel + "   (已存在，用 --force 覆盖)");
                 skipped.add(rel);
                 continue;
+            }
+            if (exists && target.getParent().endsWith(Path.of(ChangelogGenerator.DIR))) {
+                changelogOverwritten = true;
             }
             if (dryRun) {
                 out.println("  将写  " + rel + (exists ? "   (覆盖)" : ""));
@@ -131,11 +136,19 @@ public final class CodegenCli {
         if (!skipped.isEmpty() && !dryRun) {
             out.println("提示：Service / Controller 常含手工添加的业务逻辑，默认不覆盖是有意为之。");
         }
+        if (changelogOverwritten) {
+            out.println("⚠ 覆盖了已有的 changelog：如果它的 create 这个 changeset 已经在某个库上执行过，"
+                    + "那个库会因校验和不符拒绝启动。已执行过的表要加列 / 改列，请新建 changelog 文件写 ALTER。");
+        }
         return 0;
     }
 
     /** 计算待生成的文件清单。抽出来便于测试与 --dry-run 复用。 */
     static Map<Path, String> plan(ModuleSpec s, Path outDir, Path frontendOut) {
+        return plan(s, outDir, frontendOut, LocalDateTime.now());
+    }
+
+    static Map<Path, String> plan(ModuleSpec s, Path outDir, Path frontendOut, LocalDateTime now) {
         Path javaRoot = outDir.resolve("src/main/java");
         Map<Path, String> files = new LinkedHashMap<>();
 
@@ -148,12 +161,15 @@ public final class CodegenCli {
                 JavaGenerator.service(s));
         files.put(javaRoot.resolve(pkgPath(s.packageOf("controller"))).resolve(s.controllerClass() + ".java"),
                 JavaGenerator.controller(s));
-        files.put(outDir.resolve("src/main/resources/db").resolve("schema-" + s.table() + ".sql"),
-                DdlGenerator.generate(s));
 
-        // ---- 菜单：没有它，生成的页面在系统里不可达（见 MenuSqlGenerator 的说明） ----
-        files.put(outDir.resolve("src/main/resources/db").resolve("menu-" + s.table() + ".sql"),
-                MenuSqlGenerator.generate(s));
+        // ---- 数据库：建表 + 菜单，一份 Liquibase changelog（见 ChangelogGenerator 的说明）。
+        //      菜单不能省：没有它，生成的页面在系统里不可达（见 MenuSqlGenerator）。
+        Path changelogDir = outDir.resolve(ChangelogGenerator.DIR);
+        String changelogName = existingChangelog(s, changelogDir);
+        if (changelogName == null) {
+            changelogName = ChangelogGenerator.fileName(s, now);
+        }
+        files.put(changelogDir.resolve(changelogName), ChangelogGenerator.generate(s, changelogName));
 
         // ---- 前端 ----
         files.put(frontendOut.resolve("src/api").resolve(s.module() + ".ts"),
@@ -162,6 +178,27 @@ public final class CodegenCli {
                 VueGenerator.page(s));
 
         return files;
+    }
+
+    /**
+     * 同一张表已经生成过 changelog 时沿用它的文件名。
+     *
+     * <p>不沿用的话，每次重新生成都会用新的时间戳多出一份文件，里面是同 id 的 changeset——
+     * 两份同时存在，Liquibase 会因 changeset 标识重复拒绝启动。
+     */
+    private static String existingChangelog(ModuleSpec s, Path dir) {
+        if (!Files.isDirectory(dir)) {
+            return null;
+        }
+        try (Stream<Path> list = Files.list(dir)) {
+            return list.map(p -> p.getFileName().toString())
+                    .filter(name -> ChangelogGenerator.isChangelogOf(s, name))
+                    .sorted()
+                    .findFirst()
+                    .orElse(null);
+        } catch (IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
     }
 
     /** 展示用的相对路径；目标在 outDir 之外时（--frontend-out 指向别的仓库）退回绝对路径。 */
@@ -199,15 +236,16 @@ public final class CodegenCli {
                 产出（后端，<layer> = entity/mapper/service/controller）:
                   src/main/java/<pkg>/<module>/<layer>/...    nested 布局（默认）
                   src/main/java/<pkg>/<layer>/...             flat 布局（--layout flat）
-                  src/main/resources/db/schema-<table>.sql
-                  src/main/resources/db/menu-<table>.sql    菜单与按钮权限点
+                  src/main/resources/db/changelog/app/<yyyyMMddHHmm>__<table>.sql
+                                      建表 + 菜单与按钮权限点（Liquibase changelog，
+                                      重启即由框架执行，不需要登记；同表已有则沿用原文件名）
 
                 产出（前端）:
                   src/api/<module>.ts
                   src/views/<module>/index.vue
 
                 注意: 前端 accessMode = backend，路由由 sys_menu 下发。
-                      menu-<table>.sql 必须执行，否则页面在系统里不可达。
+                      菜单挂在 spec 的 menu.parent 指定的一级目录下（默认「业务管理」/biz）。
 
                 Spec 示例见 examples/ 目录；字段类型与校验规则见 README.md。""");
     }

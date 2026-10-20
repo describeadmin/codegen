@@ -13,11 +13,24 @@
 
 ## Unreleased
 
+需要 framework 带数据库迁移层（Liquibase）的版本配合：生成的 changelog 由
+framework-system-starter 在启动时执行。
+
 ### Breaking Changes
 
-- 无
+- **数据库产物由 `db/schema-<table>.sql` + `db/menu-<table>.sql` 两个文件，改为一份 Liquibase
+  changelog `db/changelog/app/<yyyyMMddHHmm>__<table>.sql`**（建表与菜单是其中两个 changeset）。
+  框架改用 Liquibase 管库后，`spring.sql.init` 那套「逐个登记进 `schema-locations` /
+  `data-locations`」不再需要：放进目录、重启即执行。同一张表重新生成时沿用已有的文件名。
+- **ADMIN 授权语句里的 `LIKE` 转义了模块名中的下划线**（`work\_order:%`）。此前
+  `work_order:%` 里的 `_` 是单字符通配符，会把 `workXorder:...` 这类别的模块的权限点也授给 ADMIN。
 
 ### New Features
+
+- **spec 新增 `menu.parent`**：菜单挂在哪个一级目录下（`path` / `name` 必填，`icon` / `sort` 可选），
+  默认仍是「业务管理」`/biz`。生成的菜单 SQL 自己幂等地确保目录存在，不依赖别的文件先建目录。
+  此前挂到别的目录只能生成后手改菜单 SQL，改完的文件之间形成隐式的执行顺序依赖。
+  `menu` 下的未知键会报错（spec 其他位置的未知键仍按原样忽略）。
 
 - **生成的 Service 与 Controller 一样带 `@RequiredArgsConstructor`**（模板此前只有
   `@Service`）。生成物本身没有依赖——Mapper 由 `BaseService` 基类持有——该注解是给业务方

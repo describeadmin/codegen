@@ -56,8 +56,7 @@ java -jar target/codegen.jar <spec.yaml> [选项]
 | `.../mapper/<Entity>Mapper.java` | 继承 `BaseMapper` |
 | `.../service/<Entity>Service.java` | 继承 `BaseService` |
 | `.../controller/<Entity>Controller.java` | 继承 `BaseController`，含五个标准端点；有 `query` 字段时覆写 `buildListWrapper` |
-| `src/main/resources/db/schema-<table>.sql` | 5.7 安全子集的建表 DDL |
-| `src/main/resources/db/menu-<table>.sql` | **菜单与按钮权限点** |
+| `src/main/resources/db/changelog/app/<yyyyMMddHHmm>__<table>.sql` | Liquibase changelog：5.7 安全子集的建表 DDL + **菜单与按钮权限点** |
 
 **前端**
 
@@ -66,11 +65,44 @@ java -jar target/codegen.jar <spec.yaml> [选项]
 | `src/api/<module>.ts` | 类型定义与四个接口封装 |
 | `src/views/<module>/index.vue` | 列表 + 搜索栏 + 表单弹窗 + 受控删除确认 |
 
+### 数据库 changelog
+
+建表与菜单在同一份 Liquibase formatted SQL 里，由框架的迁移层（framework-system-starter）
+启动时按文件名顺序执行，**不需要在任何地方登记**，放进去重启即可：
+
+- 文件名 `<yyyyMMddHHmm>__<table>.sql`：时间戳保证顺序，多人 / 多 worktree 并行生成不撞号。
+  同一张表**重新生成时沿用已有的文件名**，否则会多出一份同 id 的 changeset。
+- 首行 `--liquibase formatted sql logicalFilePath:app/<文件名>` 不能删：changeset 的身份是
+  「id + author + 文件路径」，不固定的话文件挪个目录就会被当成新的再执行一遍。框架启动时会检查。
+- `<table>-create`（建表）**执行过就不能再改**，否则所有已建库的环境都会因校验和不符拒绝启动。
+  之后加列 / 改列，在同一目录新建 `<yyyyMMddHHmm>__<描述>.sql` 写 ALTER。
+  对已生成过的表用 `--force` 重新生成时会提示这一点。
+- `<table>-menu`（菜单）是 `runOnChange`，可以改，改了会整体重跑一次——所以每条语句都是
+  `INSERT ... WHERE NOT EXISTS`。
+
 ### 为什么菜单 SQL 不能少
 
 前端 `accessMode: 'backend'`，路由完全由 `sys_menu` 表下发。
 **只生成 `.vue` 文件而没有菜单行，页面在系统里根本不可达**——访问对应路径会落到 404，
 侧边栏也不会出现入口。这一条在本项目实测踩过，所以由生成器一并产出。
+
+### 菜单挂在哪个目录下（`menu.parent`）
+
+默认挂在「业务管理」`/biz` 下。挂到别的一级目录用 `menu.parent`：
+
+```yaml
+menu:
+  parent:
+    path: /roster        # 必填，一级路径
+    name: 花名册          # 必填，目录不存在时用它新建
+    icon: lucide:users   # 可选，默认 lucide:layers
+    sort: 20             # 可选，默认 10
+```
+
+生成的菜单 SQL 先**幂等地确保这个目录存在**，再把模块挂上去——每份菜单 SQL 自给自足，
+不依赖「别的文件先建好目录」。那种隐式依赖一旦执行顺序不对，`INSERT ... SELECT` 找不到
+父行就是 0 行受影响，不报任何错。多个模块挂同一目录时，目录的名称 / 图标以先执行的为准。
+`menu` 下写了未知的键会直接报错，不会静默挂回默认目录。
 
 ### 关于 data-testid
 
@@ -87,7 +119,7 @@ java -jar target/codegen.jar <spec.yaml> [选项]
 | `nested`（默认） | `com.example.demo.project.controller` |
 | `flat` | `com.example.demo.controller` |
 
-`flat` **只影响后端 Java 包与文件落点**。前端目录、`schema-*.sql` / `menu-*.sql`、
+`flat` **只影响后端 Java 包与文件落点**。前端目录、数据库 changelog、
 权限点前缀、`@RequestMapping` 路径一律以模块名 / 表名为准，不变。
 
 取值优先级（命中即用）：

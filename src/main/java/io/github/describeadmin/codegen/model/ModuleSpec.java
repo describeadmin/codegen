@@ -25,6 +25,7 @@ import java.util.List;
  * @param layoutOrigin 布局取值的来源，仅用于生成时的提示行（如「CODEGEN_LAYOUT 环境变量」）
  * @param labelField  被别的模块引用时用作显示名的字段名；{@code null} 表示按
  *                    {@link #optionLabelField()} 的规则自动挑一个
+ * @param menuParent  菜单挂在哪个一级目录下，默认 {@link MenuParent#DEFAULT}
  * @param fields      业务字段；审计字段由 BaseEntity 承担，不在此声明
  */
 public record ModuleSpec(
@@ -37,6 +38,7 @@ public record ModuleSpec(
         Layout layout,
         String layoutOrigin,
         String labelField,
+        MenuParent menuParent,
         List<FieldSpec> fields) {
 
     public ModuleSpec {
@@ -44,6 +46,9 @@ public record ModuleSpec(
         if (layout == null) {
             layout = Layout.NESTED;
             layoutOrigin = "默认";
+        }
+        if (menuParent == null) {
+            menuParent = MenuParent.DEFAULT;
         }
     }
 

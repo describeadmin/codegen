@@ -264,7 +264,7 @@ public final class VueGenerator {
                 defineOptions({ name: '%s' });
 
                 /**
-                 * 按钮级权限。前缀与 menu-*.sql 登记的 perm_code、以及 Controller 的
+                 * 按钮级权限。前缀与菜单 SQL 登记的 perm_code、以及 Controller 的
                  * permPrefix() 覆写同源，三处必须一致——对不上的表现是按钮一个都不显示，
                  * 且没有任何错误信息指向前缀。
                  */

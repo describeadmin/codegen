@@ -35,11 +35,19 @@ jobs:
           for f in \
             /tmp/gen/src/main/java/com/example/demo/project/entity/ProjectEntity.java \
             /tmp/gen/src/main/java/com/example/demo/project/controller/ProjectController.java \
-            /tmp/gen/src/main/resources/db/schema-biz_project.sql \
-            /tmp/gen/src/main/resources/db/menu-biz_project.sql \
             /tmp/gen/frontend/src/views/project/index.vue ; do
             [ -f "$f" ] || { echo "::error::缺少产物 $f"; exit 1; }
           done
+          # changelog 文件名带生成时的时间戳，按模式找；必须恰好一个
+          n=$(ls /tmp/gen/src/main/resources/db/changelog/app/*__biz_project.sql 2>/dev/null | wc -l)
+          [ "$n" = "1" ] || { echo "::error::db/changelog/app/ 下应恰好有 1 个 *__biz_project.sql，实际 $n 个"; exit 1; }
+          # 再生成一次（--force）必须沿用原文件名，否则会多出一份同 id 的 changeset
+          java -jar target/codegen.jar examples/project.yaml --out /tmp/gen --force > /dev/null
+          n=$(ls /tmp/gen/src/main/resources/db/changelog/app/*__biz_project.sql | wc -l)
+          [ "$n" = "1" ] || { echo "::error::重新生成后出现了 $n 个 changelog（应沿用原文件名）"; exit 1; }
+          head -1 /tmp/gen/src/main/resources/db/changelog/app/*__biz_project.sql \
+            | grep -q '^--liquibase formatted sql logicalFilePath:app/' \
+            || { echo "::error::changelog 首行缺少 logicalFilePath"; exit 1; }
           echo "  ✓ 全部产物已生成"
 
       - name: 冒烟：生成的 DDL 能在 MySQL 5.7 上执行
@@ -65,7 +73,11 @@ jobs:
             sleep 2
           done
           [ -n "$ready" ] || { echo "::error::MySQL 5.7 在 120 秒内未就绪"; docker logs cg57 | tail -30; exit 1; }
-          docker cp /tmp/gen/src/main/resources/db/schema-biz_project.sql cg57:/tmp/s.sql
+          # changelog 里第二个 changeset 是菜单（依赖框架的 sys_menu 表），这里只截取建表那一段：
+          # 从 -create 的 changeset 行到下一个 --changeset 行之前
+          awk '/^--changeset .*-create/{on=1; next} /^--changeset /{on=0} on' \
+            /tmp/gen/src/main/resources/db/changelog/app/*__biz_project.sql > /tmp/s.sql
+          docker cp /tmp/s.sql cg57:/tmp/s.sql
           docker exec cg57 sh -c 'mysql -uroot -proot --default-character-set=utf8mb4 cg < /tmp/s.sql'
           # 值断言而非计数：字符集损坏时计数依然正确（CLAUDE.md 3.6）
           got=$(docker exec cg57 mysql -uroot -proot --default-character-set=utf8mb4 -N -B cg -e \

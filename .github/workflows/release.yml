@@ -64,13 +64,12 @@ jobs:
           set -e
           [ -f target/codegen.jar ] || { echo "::error::target/codegen.jar 未产出"; exit 1; }
           java -jar target/codegen.jar examples/project.yaml --out /tmp/relcheck
-          for f in \
-            /tmp/relcheck/src/main/java/com/example/demo/project/entity/ProjectEntity.java \
-            /tmp/relcheck/src/main/resources/db/schema-biz_project.sql ; do
-            [ -f "$f" ] || { echo "::error::缺少产物 $f"; exit 1; }
-          done
+          [ -f /tmp/relcheck/src/main/java/com/example/demo/project/entity/ProjectEntity.java ] \
+            || { echo "::error::缺少产物 ProjectEntity.java"; exit 1; }
+          ls /tmp/relcheck/src/main/resources/db/changelog/app/*__biz_project.sql > /dev/null \
+            || { echo "::error::缺少产物 db/changelog/app/*__biz_project.sql"; exit 1; }
           # 值断言而非存在性断言：编码坏掉时文件照样存在（CLAUDE.md 3.6）
-          grep -q '项目名称' /tmp/relcheck/src/main/resources/db/schema-biz_project.sql \
+          grep -q '项目名称' /tmp/relcheck/src/main/resources/db/changelog/app/*__biz_project.sql \
             || { echo "::error::生成产物中的中文损坏"; exit 1; }
           echo "  ✓ fat jar 可执行，产物齐备，中文完好"
 

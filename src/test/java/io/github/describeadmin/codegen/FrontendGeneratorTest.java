@@ -67,7 +67,7 @@ class FrontendGeneratorTest {
     }
 
     @Test
-    @DisplayName("增删改按钮按权限点显隐，前缀与 menu-*.sql 同源")
+    @DisplayName("增删改按钮按权限点显隐，前缀与菜单 SQL 同源")
     void buttonsGuardedByPermission() {
         String page = VueGenerator.page(spec);
         // 前缀必须是 s.module()，与 MenuSqlGenerator 登记 <module>:add/edit/remove 同源

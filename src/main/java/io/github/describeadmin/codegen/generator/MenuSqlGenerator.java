@@ -1,5 +1,6 @@
 package io.github.describeadmin.codegen.generator;
 
+import io.github.describeadmin.codegen.model.MenuParent;
 import io.github.describeadmin.codegen.model.ModuleSpec;
 
 /**
@@ -18,12 +19,11 @@ import io.github.describeadmin.codegen.model.ModuleSpec;
  * {@code INSERT ... SELECT ... WHERE NOT EXISTS} 保证幂等，
  * 不用 {@code INSERT IGNORE}（依赖唯一索引，而 sys_menu 因逻辑删除未建唯一索引），
  * 也不用 CTE 或窗口函数。
+ *
+ * <p>菜单挂在 spec 的 {@code menu.parent} 指定的一级目录下（默认「业务管理」{@code /biz}），
+ * 目录不存在时脚本先幂等地建出来——每份菜单 SQL 都自给自足，不依赖别的文件先建目录。
  */
 public final class MenuSqlGenerator {
-
-    /** 业务菜单默认挂在这个目录下；目录不存在时脚本会先建出来。 */
-    private static final String ROOT_NAME = "业务管理";
-    private static final String ROOT_PATH = "/biz";
 
     private MenuSqlGenerator() {
     }
@@ -35,7 +35,7 @@ public final class MenuSqlGenerator {
 
         StringBuilder sb = new StringBuilder();
         sb.append(header(s));
-        sb.append(rootDir());
+        sb.append(rootDir(s.menuParent()));
         sb.append(menuRow(s, route, component, listPerm));
         for (String[] btn : new String[][]{
                 {"新增", "add", "1"}, {"编辑", "edit", "2"}, {"删除", "remove", "3"}}) {
@@ -64,20 +64,21 @@ public final class MenuSqlGenerator {
                 """.formatted(s.comment(), s.module() + "/index", s.module());
     }
 
-    private static String rootDir() {
+    private static String rootDir(MenuParent parent) {
         return """
-                -- 业务菜单根目录（已存在则跳过）。component 必须是 BasicLayout，
-                -- 前端会拿它去 layoutMap 查布局组件，留空会退化成 404 页
+                -- 一级目录（已存在则跳过；多个模块挂同一目录时，名称 / 图标以先执行的为准）。
+                -- component 必须是 BasicLayout，前端会拿它去 layoutMap 查布局组件，留空会退化成 404 页
                 INSERT INTO sys_menu (parent_id, menu_name, menu_type, perm_code, path, component,
                                       icon, sort, visible, create_time, update_time, deleted, version)
-                SELECT 0, '%s', 'DIR', NULL, '%s', 'BasicLayout', 'lucide:layers', 10, 1,
+                SELECT 0, '%s', 'DIR', NULL, '%s', 'BasicLayout', '%s', %d, 1,
                        NOW(), NOW(), 0, 0
                 FROM DUAL
                 WHERE NOT EXISTS (
                   SELECT 1 FROM sys_menu WHERE path = '%s' AND parent_id = 0 AND deleted = 0
                 );
 
-                """.formatted(ROOT_NAME, ROOT_PATH, ROOT_PATH);
+                """.formatted(escape(parent.name()), parent.path(), escape(parent.icon()), parent.sort(),
+                parent.path());
     }
 
     private static String menuRow(ModuleSpec s, String route, String component, String listPerm) {
@@ -91,7 +92,7 @@ public final class MenuSqlGenerator {
                 WHERE m.path = '%s' AND m.parent_id = 0 AND m.deleted = 0
                   AND NOT EXISTS (SELECT 1 FROM sys_menu WHERE perm_code = '%s' AND deleted = 0);
 
-                """.formatted(s.comment(), listPerm, route, component, ROOT_PATH, listPerm);
+                """.formatted(escape(s.comment()), listPerm, route, component, s.menuParent().path(), listPerm);
     }
 
     private static String buttonRow(ModuleSpec s, String parentPerm,
@@ -113,15 +114,22 @@ public final class MenuSqlGenerator {
                 -- 授予 ADMIN 角色。
                 -- ⚠️ 只授 ADMIN：其余角色该看到什么由业主在「角色管理」里决定，
                 --    生成器替业主决定权限分配是越界的。
+                -- 模块名里的下划线在 LIKE 里是单字符通配符，已转义成 \\_，否则 'work_order:%%'
+                -- 会把 'workXorder:...' 这类别的模块的权限点也授出去。
                 INSERT INTO sys_role_menu (role_id, menu_id)
                 SELECT r.id, m.id
                 FROM sys_role r, sys_menu m
                 WHERE r.role_code = 'ADMIN' AND r.deleted = 0
                   AND m.deleted = 0
-                  AND (m.perm_code LIKE '%s:%%' OR m.path = '%s')
+                  AND (m.perm_code LIKE '%s:%%' OR (m.path = '%s' AND m.parent_id = 0))
                   AND NOT EXISTS (
                     SELECT 1 FROM sys_role_menu rm WHERE rm.role_id = r.id AND rm.menu_id = m.id
                   );
-                """.formatted(s.module(), ROOT_PATH);
+                """.formatted(s.module().replace("_", "\\_"), s.menuParent().path());
+    }
+
+    /** SQL 字符串字面量里的单引号转义。 */
+    private static String escape(String text) {
+        return text.replace("'", "''");
     }
 }

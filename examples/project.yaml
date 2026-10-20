@@ -21,6 +21,15 @@ apiPrefix: /api/project
 #   雪花 ID 的下拉框没有价值，反而会让人以为"选项功能坏了"。
 # labelField: projectName
 
+# menu.parent 可省略：菜单挂在哪个一级目录下，默认「业务管理」/biz。
+#   目录不存在时生成的菜单 SQL 会先建出来；已存在则直接挂上去。
+# menu:
+#   parent:
+#     path: /biz
+#     name: 业务管理
+#     icon: lucide:layers
+#     sort: 10
+
 fields:
   - name: projectName
     type: string
