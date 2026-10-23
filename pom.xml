@@ -14,7 +14,7 @@
 
   <groupId>io.github.describeadmin</groupId>
   <artifactId>codegen</artifactId>
-  <!-- 版本号与 framework 保持一致（见 develop_plan.md §9.4）：生成的薄代码继承框架基类，
+  <!-- 版本号与 framework 保持一致（见 docs 仓 site/dev/architecture.md「代码生成器」）：生成的薄代码继承框架基类，
        兼容性成对理解；「按框架版本取对应 codegen」也因此可查表确定。 -->
   <version>1.0.0</version>
 
@@ -51,7 +51,7 @@
     <!--
       构建 JDK 只要求 17 或更高（enforcer 的 requireJavaVersion 兜底），用哪个由构建者自己定。
       不用 maven-toolchains-plugin 钉死具体版本：release=17 已保证产物在 Java 17 上可运行，
-      钉一个具体版本只会让没配 ~/.m2/toolchains.xml 的人构建失败（VERSION_BASELINE 第八轮）。
+      钉一个具体版本只会让没配 ~/.m2/toolchains.xml 的人构建失败（docs/site/dev/versions.md）。
     -->
     <maven.compiler.release>17</maven.compiler.release>
 

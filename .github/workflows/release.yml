@@ -1,15 +1,15 @@
 # codegen 发布：GitHub Release 附带可执行 fat jar
 #
 # 【为什么不发到 Maven Central】
-# develop_plan.md 9.4 定了一条硬规定：codegen 绝不出现在业务方 pom.xml 的
+# 一条硬规定（docs 仓 site/dev/architecture.md「代码生成器」）：codegen 绝不出现在业务方 pom.xml 的
 # <dependencies> 中——它是命令行工具，不是库，运行时不需要任何框架类。
 # 既然没有"依赖它"的消费者，发到 Central 就没有意义。
 # （曾设想的 describeadmin-codegen-maven-plugin 形态会需要 Central，但已于
-#  2026-08-28 放弃——codegen 只做 fat jar，见 develop_plan.md §9.4.1。）
+#  2026-08-28 放弃——codegen 只做 fat jar。）
 #
 # 与 Central 不同，GitHub Release 可以删除重发，因此这条链路是可逆的——
 # 也因此这里【不设 environment 审批闸门】：推 tag 即自动完成发布。
-# 那道人工闸门是给不可逆的 Maven Central 用的（见 framework 仓 / RELEASE.md §3.3）。
+# 那道人工闸门是给不可逆的 Maven Central 用的（见 docs/site/dev/release.md）。
 #
 # 触发：打 tag v* 自动发布；或手动触发（默认 dry-run，只构建校验不建 Release）。
 

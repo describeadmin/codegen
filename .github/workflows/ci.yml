@@ -3,7 +3,7 @@
 # build / smoke jobs：生成器自身只产出源码文本，构建与冒烟不依赖 framework 任何模块。
 # e2e-compile job：把生成物落进一个 archetype 生成的真实业务工程里，在真实框架依赖树下
 #   `mvn test-compile`——这一步替代了原先由独立仓 sample-app 的 CI 承担的
-#   「生成的代码能否在真实框架下编译」职责（见 docs/MIGRATION_NOTES.md D5）。
+#   「生成的代码能否在真实框架下编译」职责（见 docs/site/dev/testing.md）。
 #   它 checkout 的是 framework（生成物真正要编译对的那个依赖），不是外部夹具仓。
 
 name: CI
