@@ -17,7 +17,7 @@ import java.util.stream.Collectors;
  *
  * <p><b>生成的是"薄"代码</b>：CRUD、分页、审计字段、逻辑删除、乐观锁全部由框架基类承担，
  * 生成物里只有业务自己的字段与方法。框架升级时改的是基类，这些薄代码基本不用跟着动——
- * 这是 develop_plan.md 目标 #5（可持续升级）在生成器侧的落点。
+ * 这是「可持续升级」这个设计目标在生成器侧的落点。
  *
  * <p>访问器与依赖注入构造器交给 Lombok（Entity 上的 {@code @Getter}/{@code @Setter}、
  * Controller 与 Service 上的 {@code @RequiredArgsConstructor}），与"薄代码"同向——生成物更小，
@@ -87,7 +87,8 @@ public final class JavaGenerator {
                  * %s Mapper。
                  *
                  * <p>由 codegen 生成。通用 CRUD 由 {@code BaseMapper} 提供，
-                 * 需要自定义 SQL 时在此追加方法——注意遵守 CLAUDE.md 3.1 的 SQL 红线。
+                 * 需要自定义 SQL 时在此追加方法——只用 MySQL 5.7 的安全子集（不用窗口函数、CTE、
+                 * JSON 函数），否则在国产化数据库上可能执行失败。
                  */
                 public interface %s extends BaseMapper<%s> {
                 }
@@ -199,16 +200,15 @@ public final class JavaGenerator {
                     /**
                      * 权限点前缀。
                      *
-                     * <p>显式覆写，不依赖 {@code BaseController} 从 {@code @RequestMapping} 的推导：
-                     * apiPrefix 默认会把模块名里的下划线换成连字符（{@code my_module} →
-                     * {@code /api/my-module}），而菜单 SQL 登记的权限点用的是模块名原样
-                     * （{@code my_module:list}）。靠推导会得到 {@code my-module:list}，
-                     * 与授权数据对不上，表现为<b>连 ADMIN 都被 403</b>——
+                     * <p>必须与菜单 changelog 里登记的 {@code perm_code}、前端页面的
+                     * {@code usePermission(...)} 三处一致，对不上的表现是<b>连 ADMIN 都被 403</b>，
                      * 而错误信息里没有任何东西指向"权限点前缀拼错了"。
                      *
-                     * <p>{@code public} 而非 {@code protected}：{@code BaseController.permPrefix()}
-                     * 自 0.2.0 起是 {@code public}（供 {@code OperLogAspect} 跨包读取），
-                     * 覆写不能收窄可见性。
+                     * <p>显式覆写，不依赖 {@code BaseController} 从 {@code @RequestMapping} 的推导：
+                     * 改了接口路径、或模块名带下划线（{@code my_module} 的默认路径是
+                     * {@code /api/my-module}）时，推导结果会与登记的权限点不一致。
+                     *
+                     * <p>{@code public} 而非 {@code protected}：覆写不能收窄基类方法的可见性。
                      */
                     @Override
                     public String permPrefix() {
@@ -223,7 +223,7 @@ public final class JavaGenerator {
                 s.controllerClass(), s.serviceClass(), s.mapperClass(), s.entityClass(),
                 s.serviceClass(), s.entityVar() + "Service",
                 s.serviceClass(), s.entityVar() + "Service",
-                s.module(),
+                s.permPrefix(),
                 labelField == null ? "" : optionsMethod(s, labelField),
                 queryFields.isEmpty() ? "" : listMethod(s, queryFields));
     }
@@ -271,7 +271,7 @@ public final class JavaGenerator {
                                 .toList());
                     }
                 """).formatted(
-                s.comment(), s.module(),
+                s.comment(), s.permPrefix(),
                 s.entityClass(), s.entityClass(),
                 label.column(), label.column(),
                 s.entityVar() + "Service", s.comment(),

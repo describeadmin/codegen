@@ -38,6 +38,8 @@ public final class SpecLoader {
     private static final Pattern UPPER_CAMEL = Pattern.compile("^[A-Z][A-Za-z0-9]*$");
     private static final Pattern SNAKE = Pattern.compile("^[a-z][a-z0-9_]*$");
     private static final Pattern PACKAGE = Pattern.compile("^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$");
+    /** 权限点前缀：一段或多段，冒号分隔，如 project、hr:employee。 */
+    private static final Pattern PERM_PREFIX = Pattern.compile("^[a-z][a-z0-9_-]*(:[a-z][a-z0-9_-]*)*$");
     /** 一级目录的路由路径：只有一段，如 /roster。 */
     private static final Pattern TOP_PATH = Pattern.compile("^/[A-Za-z0-9_-]+$");
 
@@ -81,6 +83,7 @@ public final class SpecLoader {
         String table = str(root, "table");
         String comment = str(root, "comment");
         String apiPrefix = str(root, "apiPrefix");
+        String permPrefix = str(root, "permPrefix");
         String labelField = str(root, "labelField");
 
         require(errors, basePackage, "basePackage", "业务方基础包名，如 com.example.demo");
@@ -93,6 +96,13 @@ public final class SpecLoader {
         }
         if (module != null && !SNAKE.matcher(module).matches()) {
             errors.add("module \"" + module + "\" 应为小写字母开头的小写/下划线形式，如 project 或 work_order");
+        }
+        if (permPrefix != null && !PERM_PREFIX.matcher(permPrefix).matches()) {
+            errors.add("permPrefix \"" + permPrefix + "\" 应为小写、冒号分隔的一段或多段，如 project 或 hr:employee；"
+                    + "不要带动作（list/add/edit/remove 由生成器拼接）");
+        } else if (permPrefix != null && permPrefix.matches(".*:(list|add|edit|remove)$")) {
+            errors.add("permPrefix \"" + permPrefix + "\" 以动作结尾；只写前缀，如 hr:employee，"
+                    + "生成器会拼出 hr:employee:list 等四个权限点");
         }
         if (entity != null && !UPPER_CAMEL.matcher(entity).matches()) {
             errors.add("entity \"" + entity + "\" 应为大驼峰且不带 Entity 后缀，如 Project");
@@ -132,6 +142,7 @@ public final class SpecLoader {
         return new ModuleSpec(basePackage, module, entity, table,
                 comment == null ? entity : comment,
                 apiPrefix == null ? "/api/" + module.replace('_', '-') : apiPrefix,
+                permPrefix == null ? module : permPrefix,
                 layout.layout(), layout.origin(),
                 labelField,
                 menuParent,

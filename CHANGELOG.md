@@ -21,10 +21,17 @@
   changelog `db/changelog/app/<yyyyMMddHHmm>__<table>.sql`**（建表与菜单是其中两个 changeset）。
   框架改用 Liquibase 管库后，`spring.sql.init` 那套「逐个登记进 `schema-locations` /
   `data-locations`」不再需要：放进目录、重启即执行。同一张表重新生成时沿用已有的文件名。
-- **ADMIN 授权语句里的 `LIKE` 转义了模块名中的下划线**（`work\_order:%`）。此前
-  `work_order:%` 里的 `_` 是单字符通配符，会把 `workXorder:...` 这类别的模块的权限点也授给 ADMIN。
+- **ADMIN 授权语句改为逐个列出本模块的四个权限点**（`perm_code IN (...)`），不再用 `LIKE '<模块>:%'`。
+  此前 `work_order:%` 里的 `_` 是单字符通配符，会把 `workXorder:...` 这类别的模块的权限点也授给 ADMIN；
+  前缀本身也可能是另一个模块前缀的开头。
 
 ### New Features
+
+- **spec 新增可选的 `permPrefix`**：权限点前缀，生成 `<permPrefix>:list/add/edit/remove`。省略时取模块名，
+  与此前的两段式一致；需要 `<模块>:<对象>:<动作>` 三段式时写成 `permPrefix: pm:project`。菜单 changelog、
+  Controller 的 `permPrefix()`、列表页的 `usePermission` 同时使用它。格式不对或以动作结尾时校验报错。
+- 生成的 Mapper、建表 changelog 注释不再引用框架仓库内部的 `CLAUDE.md` 节号（业务工程里没有那份文件），
+  改为直接写出 SQL 规则。
 
 - **spec 新增 `menu.parent`**：菜单挂在哪个一级目录下（`path` / `name` 必填，`icon` / `sort` 可选），
   默认仍是「业务管理」`/biz`。生成的菜单 SQL 自己幂等地确保目录存在，不依赖别的文件先建目录。

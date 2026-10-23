@@ -115,10 +115,23 @@ class ChangelogGeneratorTest {
     }
 
     @Test
-    @DisplayName("授权的 LIKE 里模块名的下划线被转义，不会把别的模块的权限点授出去")
-    void likeEscapesUnderscore() {
+    @DisplayName("授权按权限点逐个列出，不用 LIKE：不会把前缀相同的别的模块的权限点授出去")
+    void grantListsExactPermCodes() {
         assertThat(ChangelogGenerator.generate(parse(""), "x.sql"))
-                .contains("m.perm_code LIKE 'work\\_order:%'");
+                .contains("m.perm_code IN ('work_order:list', 'work_order:add', "
+                        + "'work_order:edit', 'work_order:remove')")
+                .doesNotContain("perm_code LIKE");
+    }
+
+    @Test
+    @DisplayName("permPrefix 指定三段式时，菜单、按钮、授权都用它")
+    void customPermPrefix() {
+        String sql = ChangelogGenerator.generate(parse("permPrefix: ops:work_order\n"), "x.sql");
+        assertThat(sql).contains("'ops:work_order:list'")
+                .contains("'ops:work_order:add'")
+                .contains("'ops:work_order:edit'")
+                .contains("'ops:work_order:remove'")
+                .doesNotContain("'work_order:list'");
     }
 
     @Test

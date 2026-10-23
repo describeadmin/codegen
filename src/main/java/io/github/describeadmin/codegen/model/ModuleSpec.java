@@ -5,7 +5,7 @@ import java.util.List;
 /**
  * 模块定义 —— 生成器的唯一输入。
  *
- * <p>之所以以 YAML 描述而非读取数据库元数据（develop_plan.md 3.3.1）：
+ * <p>之所以以 YAML 描述而非读取数据库元数据：
  * <ul>
  *   <li>各国产化数据库的 {@code information_schema} 结构、类型映射、注释字段都不一致，
  *       读元数据的路子在最需要生成器的场景下反而不可用</li>
@@ -21,6 +21,9 @@ import java.util.List;
  * @param table       表名，如 {@code biz_project}
  * @param comment     模块中文名，用于注释、DDL comment 与测试用例描述
  * @param apiPrefix   REST 路径前缀，默认 {@code /api/<module>}
+ * @param permPrefix  权限点前缀，权限点为 {@code <permPrefix>:<动作>}。默认 {@code <module>}（两段式）；
+ *                    想按 {@code <模块>:<对象>:<动作>} 三段式命名时在 spec 里写，如 {@code hr:employee}。
+ *                    与菜单挂在哪个目录无关——同一个功能可能挂到不同的上级，权限点不该跟着变
  * @param layout      后端 Java 包布局（{@code nested} / {@code flat}），只影响 {@link #packageOf}
  * @param layoutOrigin 布局取值的来源，仅用于生成时的提示行（如「CODEGEN_LAYOUT 环境变量」）
  * @param labelField  被别的模块引用时用作显示名的字段名；{@code null} 表示按
@@ -35,6 +38,7 @@ public record ModuleSpec(
         String table,
         String comment,
         String apiPrefix,
+        String permPrefix,
         Layout layout,
         String layoutOrigin,
         String labelField,

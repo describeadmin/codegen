@@ -110,6 +110,24 @@ class SpecLoaderTest {
                 .hasMessageContaining("noSuchField");
     }
 
+    @Test
+    @DisplayName("permPrefix 省略时是模块名（两段式），写了就原样采用")
+    void permPrefixDefaultsToModule() {
+        assertThat(parse(MINIMAL).permPrefix()).isEqualTo("project");
+        assertThat(parse(MINIMAL + "permPrefix: pm:project\n").permPrefix()).isEqualTo("pm:project");
+    }
+
+    @Test
+    @DisplayName("permPrefix 格式不对、或带了动作，被拦下")
+    void invalidPermPrefixRejected() {
+        assertThatThrownBy(() -> parse(MINIMAL + "permPrefix: PM:Project\n"))
+                .hasMessageContaining("permPrefix");
+        assertThatThrownBy(() -> parse(MINIMAL + "permPrefix: pm::project\n"))
+                .hasMessageContaining("permPrefix");
+        assertThatThrownBy(() -> parse(MINIMAL + "permPrefix: pm:project:list\n"))
+                .hasMessageContaining("以动作结尾");
+    }
+
     // ------------------------------------------------------------------
     // 以下几条验证「SQL 红线固化在类型系统里」：生成器根本产不出违规 SQL
     // ------------------------------------------------------------------

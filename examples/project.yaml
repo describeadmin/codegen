@@ -15,6 +15,11 @@ comment: 项目
 # apiPrefix 可省略，默认为 /api/<module>
 apiPrefix: /api/project
 
+# permPrefix 可省略：权限点前缀，生成 <permPrefix>:list/add/edit/remove。
+#   省略 = 模块名（project:list）；按「模块:对象:动作」三段式命名时写出来，如 pm:project。
+#   与菜单挂在哪个目录无关，接口路径与页面位置也不受它影响。
+# permPrefix: pm:project
+
 # labelField 可省略：本模块被别的模块引用时，下拉框里显示哪个字段。
 #   省略 = 取第一个 string 字段（这里就是 projectName）。
 #   一个 string 字段都没有时不生成 /options 端点与 getXxxOptionsApi —— 一个只显示

@@ -70,9 +70,9 @@ class FrontendGeneratorTest {
     @DisplayName("增删改按钮按权限点显隐，前缀与菜单 SQL 同源")
     void buttonsGuardedByPermission() {
         String page = VueGenerator.page(spec);
-        // 前缀必须是 s.module()，与 MenuSqlGenerator 登记 <module>:add/edit/remove 同源
+        // 前缀必须是 s.permPrefix()，与 MenuSqlGenerator 登记 <permPrefix>:add/edit/remove 同源
         assertThat(page).contains("import { usePermission } from '@describeadmin/access';");
-        assertThat(page).contains("const { can, canAny } = usePermission('" + spec.module() + "');");
+        assertThat(page).contains("const { can, canAny } = usePermission('" + spec.permPrefix() + "');");
         // 三个按钮各自的 v-if
         assertThat(page).contains("v-if=\"can('add')\"");
         assertThat(page).contains("v-if=\"can('edit')\"");

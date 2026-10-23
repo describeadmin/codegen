@@ -59,7 +59,7 @@ public final class DdlGenerator {
         return """
                 -- %s
                 --
-                -- 由 codegen 生成。语法基线：MySQL 5.7 安全子集（CLAUDE.md 3.1）
+                -- 由 codegen 生成。语法基线：MySQL 5.7 安全子集
                 -- 审计字段与 BaseEntity 一一对应，请勿手工增删。
                 CREATE TABLE IF NOT EXISTS %s (
                   %s

@@ -3,17 +3,20 @@ package io.github.describeadmin.codegen.generator;
 import io.github.describeadmin.codegen.model.MenuParent;
 import io.github.describeadmin.codegen.model.ModuleSpec;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 /**
  * 生成菜单与权限点的 SQL。
  *
  * <p><b>为什么生成页面还不够</b>：前端用 {@code accessMode: 'backend'}，
  * 路由完全由 {@code sys_menu} 表下发。只生成 {@code .vue} 文件而没有菜单行，
  * 页面在系统里根本不可达——访问对应路径会落到 404，侧边栏也不会出现入口。
- * 这一条在本项目实测踩过（VERSION_BASELINE.md 发现 ⑪），所以由生成器一并产出。
+ * 这一条在本项目实测踩过（docs/site/dev/pitfalls.md ⑪），所以由生成器一并产出。
  *
  * <p>按钮级权限点与页面里的按钮一一对应：{@code add} / {@code edit} / {@code remove}。
- * 前端用 {@code v-access:code} 控制显隐，因此「页面上有哪些按钮」与
- * 「谁能看到这些按钮」共用同一份数据。
+ * 前端用 {@code usePermission(permPrefix)} 控制显隐，因此「页面上有哪些按钮」与
+ * 「谁能看到这些按钮」共用同一份数据。权限点前缀取 spec 的 {@code permPrefix}，默认是模块名。
  *
  * <p>SQL 遵守 MySQL 5.7 安全子集（CLAUDE.md 3.1）：只用
  * {@code INSERT ... SELECT ... WHERE NOT EXISTS} 保证幂等，
@@ -25,13 +28,15 @@ import io.github.describeadmin.codegen.model.ModuleSpec;
  */
 public final class MenuSqlGenerator {
 
+    private static final List<String> ACTIONS = List.of("list", "add", "edit", "remove");
+
     private MenuSqlGenerator() {
     }
 
     public static String generate(ModuleSpec s) {
         String route = s.apiPrefix().replaceFirst("^/api", "");
         String component = s.module() + "/index";
-        String listPerm = s.module() + ":list";
+        String listPerm = s.permPrefix() + ":list";
 
         StringBuilder sb = new StringBuilder();
         sb.append(header(s));
@@ -97,7 +102,7 @@ public final class MenuSqlGenerator {
 
     private static String buttonRow(ModuleSpec s, String parentPerm,
                                     String label, String action, String sort) {
-        String perm = s.module() + ":" + action;
+        String perm = s.permPrefix() + ":" + action;
         return """
                 INSERT INTO sys_menu (parent_id, menu_name, menu_type, perm_code, path, component,
                                       icon, sort, visible, create_time, update_time, deleted, version)
@@ -114,18 +119,26 @@ public final class MenuSqlGenerator {
                 -- 授予 ADMIN 角色。
                 -- ⚠️ 只授 ADMIN：其余角色该看到什么由业主在「角色管理」里决定，
                 --    生成器替业主决定权限分配是越界的。
-                -- 模块名里的下划线在 LIKE 里是单字符通配符，已转义成 \\_，否则 'work_order:%%'
-                -- 会把 'workXorder:...' 这类别的模块的权限点也授出去。
+                -- 按权限点逐个列出而不是 LIKE '<前缀>:%%'：前缀可能是另一个模块前缀的开头
+                -- （hr 与 hr:employee），LIKE 会把别的模块的权限点也授出去；下划线在 LIKE 里
+                -- 还是通配符，转义写法各数据库也不一致。
                 INSERT INTO sys_role_menu (role_id, menu_id)
                 SELECT r.id, m.id
                 FROM sys_role r, sys_menu m
                 WHERE r.role_code = 'ADMIN' AND r.deleted = 0
                   AND m.deleted = 0
-                  AND (m.perm_code LIKE '%s:%%' OR (m.path = '%s' AND m.parent_id = 0))
+                  AND (m.perm_code IN (%s) OR (m.path = '%s' AND m.parent_id = 0))
                   AND NOT EXISTS (
                     SELECT 1 FROM sys_role_menu rm WHERE rm.role_id = r.id AND rm.menu_id = m.id
                   );
-                """.formatted(s.module().replace("_", "\\_"), s.menuParent().path());
+                """.formatted(permCodes(s), s.menuParent().path());
+    }
+
+    /** 本模块登记的全部权限点，SQL 字面量列表。 */
+    private static String permCodes(ModuleSpec s) {
+        return ACTIONS.stream()
+                .map(action -> "'" + escape(s.permPrefix() + ":" + action) + "'")
+                .collect(Collectors.joining(", "));
     }
 
     /** SQL 字符串字面量里的单引号转义。 */

@@ -471,7 +471,7 @@ public final class VueGenerator {
                 elImports,
                 s.entity(), s.entity(), s.entity(), s.entity(), s.module(), searchValueImport,
                 s.module(),
-                s.module(),
+                s.permPrefix(),
                 s.entity(),
                 searchModel.isEmpty() ? "  // spec 中没有 query 字段，无查询条件" : searchModel,
                 formModel,

@@ -2,6 +2,7 @@ package io.github.describeadmin.codegen;
 
 import io.github.describeadmin.codegen.generator.DdlGenerator;
 import io.github.describeadmin.codegen.generator.JavaGenerator;
+import io.github.describeadmin.codegen.generator.VueGenerator;
 import io.github.describeadmin.codegen.model.FieldType;
 import io.github.describeadmin.codegen.model.ModuleSpec;
 import io.github.describeadmin.codegen.parser.SpecLoader;
@@ -92,10 +93,24 @@ class GeneratorTest {
         assertThat(src).contains("@RequiredArgsConstructor");
         assertThat(src).contains("private final ProjectService projectService;");
         assertThat(src).doesNotContain("public ProjectController(");
-        // BaseController.permPrefix() 自 0.2.0 起是 public——覆写不能收窄可见性，
-        // 写成 protected 会编译不过（实测在 sample-app 上踩过）
+        // BaseController.permPrefix() 是 public——覆写不能收窄可见性，写成 protected 会编译不过
         assertThat(src).contains("public String permPrefix()");
         assertThat(src).doesNotContain("protected String permPrefix()");
+        assertThat(src).as("permPrefix 省略时是模块名").contains("return \"project\";");
+    }
+
+    @Test
+    @DisplayName("spec 写了 permPrefix 时，Controller 与列表页都用它，接口路径与页面位置不变")
+    void customPermPrefixFlowsToControllerAndPage() {
+        ModuleSpec custom = new ModuleSpec(spec.basePackage(), spec.module(), spec.entity(), spec.table(),
+                spec.comment(), spec.apiPrefix(), "pm:project", spec.layout(), spec.layoutOrigin(),
+                spec.labelField(), spec.menuParent(), spec.fields());
+
+        String controller = JavaGenerator.controller(custom);
+        assertThat(controller).contains("return \"pm:project\";")
+                .contains("{@code pm:project:list}")
+                .contains("@RequestMapping(\"/api/project\")");
+        assertThat(VueGenerator.page(custom)).contains("usePermission('pm:project')");
     }
 
     @Test
