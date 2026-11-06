@@ -10,7 +10,7 @@
 > 0.2.2 是刻意的例外：只有 codegen 发了 0.2.2（改动是少生成一个文件，无兼容影响），
 > framework 停在 0.2.1。自 1.0.0 起两者重新同号。
 
-## 1.0.0 (未发布)
+## 1.0.0 (2026-11-06)
 
 **第一个正式版，与 framework 1.0.0 同号发布。** 需要 framework 带数据库迁移层（Liquibase）的
 版本（即 1.0.0）配合：生成的 changelog 由 framework-system-starter 在启动时执行。
