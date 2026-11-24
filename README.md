@@ -1,6 +1,9 @@
 # codegen
 
-![Describe Admin](./assets/logo-text.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/logo-text.svg">
+  <img alt="Describe Admin" src="./assets/logo-text-light.svg">
+</picture>
 
 describeadmin 的代码生成器：读一份 YAML，同时生成一个业务模块的后端（Entity / Mapper / Service / Controller）、
 数据库 changelog（建表 + 菜单与权限点）和前端（列表页 + 接口封装）。生成的是继承框架基类的「薄」代码，框架升级时基本不用动。
